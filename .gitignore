@@ -1,0 +1,17 @@
+# Model files - too large for GitHub (>100MB)
+ai_image_server/models/*
+*.safetensors
+*.bin
+*.h5
+*.onnx
+*.pb
+*.ckpt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
