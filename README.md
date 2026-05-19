@@ -1,153 +1,103 @@
-# AI Content Generator
+# AI Studio
 
-A versatile AI-powered content generation platform that provides both text completion and image generation capabilities through RESTful APIs.
+AI-powered content generation platform with Google Gemini. Generate images and text using your own Gemini API key.
 
 ## Features
 
-- **Text Completion**: Generate human-like text using state-of-the-art language models
-- **Image Generation**: Create high-quality images from text descriptions using diffusion models
-- **RESTful API**: Easy-to-use HTTP endpoints for integration with any application
-- **Scalable Design**: Built with Flask for easy deployment and scaling
-- **Model Flexibility**: Supports multiple AI models that can be easily swapped
+- **Google OAuth sign-in** — secure authentication with your Google account
+- **Image generation** — powered by Gemini Flash Image (Nano Banana) models
+- **Text generation** — powered by Gemini Flash models
+- **Bring Your Own Key** — use your own Gemini API key with your free tier quota
+- **Usage tracking** — free tier capped at 3 image generations per user
+- **Modern UI** — clean, responsive dark-theme interface
 
-## Architecture
+## Quick Start
 
-The project consists of two main services:
+### 1. Prerequisites
 
-1. **AI Completion Service** (`ai_completion/`) - Text generation capabilities
-2. **AI Image Server** (`ai_image_server/`) - Image generation using Stable Diffusion models
+- Python 3.11+
+- Google account
+- Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey)
+- Google OAuth credentials from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 
-## Setup
-
-### Prerequisites
-
-- Python 3.8+
-- Git LFS (for downloading model files)
-- At least 8GB RAM recommended for model loading
-
-### Installation
+### 2. Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/govindtank/ai-content-generator.git
-cd ai-content-generator
-
-# Install Git LFS (required for model files)
-git lfs install
-git lfs pull
-
-# Install Python dependencies
-pip install -r ai_image_server/requirements.txt
-pip install -r ai_completion/requirements.txt
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### Model Downloads
+### 3. Configure
 
-The AI models are large files (>100MB each) and are not stored in this repository due to GitHub limitations. They will be automatically downloaded on first run or can be manually downloaded:
+Copy `.env.example` to `.env` and fill in:
+
+```
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+SECRET_KEY=generate-a-random-secret
+```
+
+**Getting Google OAuth credentials:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create an OAuth 2.0 Client ID (Web application)
+3. Add `http://localhost:8080/auth/callback` as an Authorized redirect URI
+4. Copy the Client ID and Client Secret
+
+### 4. Run
 
 ```bash
-# For text completion models (example)
-mkdir -p ai_completion/models
-# Download your preferred LLM model (e.g., from HuggingFace)
-
-# For image generation models
-mkdir -p ai_image_server/models
-# The server will automatically download Stable Diffusion weights on first run
-# Or manually place:
-# - sd_xl_base_1.0.safetensors
-# - v1-5-pruned-emaonly.safetensors
+python run.py
 ```
 
-## Usage
+Open [http://localhost:8080](http://localhost:8080)
 
-### Start the Services
+### 5. Use
+
+1. Sign in with your Google account
+2. Go to **Settings** and enter your Gemini API key
+3. Start generating images and text from the Dashboard
+
+## Docker
 
 ```bash
-# Start the image generation server
-cd ai_image_server
-python server.py
-
-# In another terminal, start the completion service
-cd ../ai_completion
-python server.py
+docker compose up --build
 ```
 
-### API Endpoints
-
-#### Image Generation
-```
-POST /generate-image
-Content-Type: application/json
-
-{
-  "prompt": "A beautiful sunset over mountains",
-  "negative_prompt": "low quality, blurry",
-  "width": 512,
-  "height": 512,
-  "num_inference_steps": 30,
-  "guidance_scale": 7.5
-}
-```
-
-#### Text Completion
-```
-POST /generate-text
-Content-Type: application/json
-
-{
-  "prompt": "Once upon a time",
-  "max_length": 100,
-  "temperature": 0.7,
-  "top_p": 0.9
-}
-```
+Set environment variables in a `.env` file (refer to `.env.example`).
 
 ## Configuration
 
-Edit `config.json` in the `ai_completion/` directory to adjust:
-- Model paths
-- Generation parameters
-- Server ports
+| Variable | Default | Description |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | `http://localhost:8080/auth/callback` | OAuth callback URL |
+| `SECRET_KEY` | random | Flask session secret |
+| `PORT` | 8080 | HTTP port |
+| `HOST` | 0.0.0.0 | Bind address |
+| `DATABASE_PATH` | data/app.db | SQLite database path |
+| `IMAGE_GENERATIONS_LIMIT` | 3 | Free tier image generation limit |
+| `GEMINI_TEXT_MODEL` | gemini-2.0-flash | Model for text generation |
+| `GEMINI_IMAGE_MODEL` | gemini-2.5-flash-image | Model for image generation |
 
-## Development
+## Architecture
 
-### Project Structure
 ```
-ai-content-generator/
-├── ai_completion/          # Text generation service
-│   ├── server.py
-│   └── config.json
-├── ai_image_server/        # Image generation service
-│   ├── server.py           # Main Flask server
-│   ├── simple_server.py    # Alternative implementation
-│   └── models/             # Stable Diffusion model files (not in repo)
-└── README.md
+app/
+├── __init__.py       # Flask app factory
+├── config.py         # Configuration
+├── db.py             # SQLite database
+├── auth.py           # Google OAuth
+├── gemini.py         # Gemini API client
+├── decorators.py     # Auth middleware
+├── routes/
+│   ├── dashboard.py  # Dashboard, settings, history
+│   ├── text.py       # Text generation API
+│   └── image.py      # Image generation API
+├── templates/        # Jinja2 pages
+└── static/           # CSS, JS
 ```
-
-## Deployment
-
-### Docker (Coming Soon)
-Dockerfiles will be provided for easy containerized deployment.
-
-### Cloud Deployment
-The services can be deployed to any cloud platform that supports Python applications (AWS, GCP, Azure, etc.).
-
-## Model Attribution
-
-- Stable Diffusion XL Base 1.0: Stability AI
-- Stable Diffusion v1.5: CompVis/Stability AI
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Contact
-
-For questions or support, please open an issue on GitHub.
-
----
-*Built with ❤️ by Hermes Agent*
+MIT

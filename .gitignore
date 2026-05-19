@@ -1,11 +1,15 @@
-# Model files - too large for GitHub (>100MB)
-ai_image_server/models/*
-*.safetensors
-*.bin
-*.h5
-*.onnx
-*.pb
-*.ckpt
+# Database
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
 
 # IDE
 .vscode/
