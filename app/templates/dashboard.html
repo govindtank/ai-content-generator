@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - AI Studio{% endblock %}
+{% block title %}Dashboard - {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
     <h1>Welcome back, {{ user.name or user.email }}</h1>
-    <p class="text-muted">Your creative AI workspace</p>
+    <p class="text-muted">{{ app_tagline }}</p>
   </div>
 </div>
 
+<!-- Usage Cards -->
 <div class="usage-cards">
   <div class="usage-card image-card">
     <div class="usage-card-header">
@@ -36,7 +37,6 @@
         {% endif %}
       </div>
     </div>
-    <a href="{{ url_for('dashboard.index') }}#generate" class="btn btn-primary btn-sm" onclick="openGenerate()">Generate Image</a>
   </div>
 
   <div class="usage-card text-card">
@@ -57,29 +57,111 @@
         <span>No usage limits</span>
       </div>
     </div>
-    <a href="{{ url_for('dashboard.index') }}#generate" class="btn btn-primary btn-sm" onclick="openGenerate()">Generate Text</a>
   </div>
 </div>
 
+<!-- Generate Section -->
 <div class="section" id="generate">
   <div class="section-header">
-    <h2>Generate</h2>
-    <div class="tab-bar">
-      <button class="tab-btn active" data-tab="image" onclick="switchTab('image')">Image</button>
-      <button class="tab-btn" data-tab="text" onclick="switchTab('text')">Text</button>
+    <div class="section-tabs">
+      <h2>Generate</h2>
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="text" onclick="switchTab('text')">Text</button>
+        <button class="tab-btn" data-tab="image" onclick="switchTab('image')">Image</button>
+      </div>
     </div>
   </div>
 
   <div class="generate-grid">
     <div class="generate-form">
-      <div class="tab-panel active" id="panel-image">
+      <!-- TEXT TAB -->
+      <div class="tab-panel active" id="panel-text">
+        <div class="form-group">
+          <label class="form-label">Content Format</label>
+          <select id="text-format" class="form-input" onchange="onFormatChange('text')">
+            {% for fmt in formats %}
+            <option value="{{ fmt.name }}" data-desc="{{ fmt.description }}" data-prompt="{{ fmt.system_prompt }}">{{ fmt.icon }} {{ fmt.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group" id="format-description-box" style="display:none">
+          <p class="hint" id="format-description"></p>
+        </div>
+
+        <textarea id="text-prompt" class="form-input prompt-input" placeholder="Enter your prompt..." rows="5"></textarea>
+
+        <div class="form-row three-col">
+          <div class="form-group">
+            <label class="form-label">Provider</label>
+            <select id="text-provider" class="form-input" onchange="onProviderChange('text')">
+              {% for p in providers %}
+              <option value="{{ p.slug }}" {% if p.slug == 'gemini' %}selected{% endif %}
+                {% if not provider_keys.get(p.slug) and not (p.slug == 'gemini' and user.gemini_api_key) %}class="missing-key"{% endif %}>
+                {{ p.name }}{% if p.supports_text %} ✓{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Model</label>
+            <select id="text-model" class="form-input">
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+              <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tone</label>
+            <select id="text-tone" class="form-input">
+              <option value="">Default</option>
+              <option value="professional">Professional</option>
+              <option value="casual">Casual</option>
+              <option value="witty">Witty</option>
+              <option value="educational">Educational</option>
+              <option value="persuasive">Persuasive</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-actions">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="togglePromptLibrary()" id="btn-library">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              Templates
+            </button>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="toggleBatchSection()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Batch
+            </button>
+          <button class="btn btn-primary btn-generate" onclick="generateText()" id="gen-text-btn">
+            <span class="btn-label">Generate</span>
+            <span class="spinner" style="display:none"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- IMAGE TAB -->
+      <div class="tab-panel" id="panel-image">
         <textarea id="image-prompt" class="form-input prompt-input" placeholder="Describe the image you want to generate..." rows="4"></textarea>
         <div class="form-row">
           <div class="form-group">
+            <label class="form-label">Provider</label>
+            <select id="image-provider" class="form-input" onchange="onProviderChange('image')">
+              {% for p in providers %}
+              <option value="{{ p.slug }}" {% if p.slug == 'gemini' %}selected{% endif %}
+                {% if not provider_keys.get(p.slug) and not (p.slug == 'gemini' and user.gemini_api_key) %}class="missing-key"{% endif %}>
+                {{ p.name }}{% if p.supports_image %} ✓{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
             <label class="form-label">Model</label>
             <select id="image-model" class="form-input">
-              <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Nano Banana)</option>
-              <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+              <option value="gemini-2.5-flash-image">Gemini 2.5 Flash</option>
+              <option value="dall-e-3">DALL-E 3</option>
             </select>
           </div>
           <div class="form-group">
@@ -99,23 +181,6 @@
           <span class="spinner" style="display:none"></span>
         </button>
       </div>
-
-      <div class="tab-panel" id="panel-text">
-        <textarea id="text-prompt" class="form-input prompt-input" placeholder="Enter your prompt..." rows="4"></textarea>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Model</label>
-            <select id="text-model" class="form-input">
-              <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast)</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-generate" onclick="generateText()" id="gen-text-btn">
-          <span class="btn-label">Generate Text</span>
-          <span class="spinner" style="display:none"></span>
-        </button>
-      </div>
     </div>
 
     <div class="generate-result" id="result-area">
@@ -125,7 +190,7 @@
       </div>
       <div id="result-content" style="display:none">
         <div class="result-toolbar">
-          <span class="result-badge" id="result-badge">Image</span>
+          <span class="result-badge" id="result-badge">Text</span>
           <div class="result-actions">
             <button class="btn btn-ghost btn-sm" id="copy-btn" style="display:none" onclick="copyResult()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -144,6 +209,116 @@
   </div>
 </div>
 
+<!-- Batch Generation -->
+<div class="section" id="batch-section" style="display:none">
+  <div class="section-header">
+    <h2>Batch Generation</h2>
+    <button class="btn btn-secondary btn-sm" onclick="toggleBatchSection()">Hide</button>
+  </div>
+  <div class="generate-grid">
+    <div class="generate-form">
+      <div class="form-group">
+        <label class="form-label">Job Name</label>
+        <input type="text" id="batch-name" class="form-input" placeholder="e.g., Product Descriptions Batch">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prompt Template (use {% raw %}{{ variable }}{% endraw %} placeholders)</label>
+        <textarea id="batch-prompt" class="form-input prompt-input" rows="4" placeholder="e.g., Write a product description for {{ product }} targeting {{ audience }}"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Variables (JSON — keys are variable names, values are lists)</label>
+        <textarea id="batch-variables" class="form-input" rows="4" placeholder='{"product": ["iPhone 16", "MacBook Air", "AirPods"], "audience": ["tech enthusiasts", "students", "professionals"]}'></textarea>
+      </div>
+      <div class="form-row three-col">
+        <div class="form-group">
+          <label class="form-label">Provider</label>
+          <select id="batch-provider" class="form-input">
+            {% for p in providers %}
+            <option value="{{ p.slug }}" {% if p.slug == 'gemini' %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Model</label>
+          <select id="batch-model" class="form-input">
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o Mini</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Format</label>
+          <select id="batch-format" class="form-input">
+            {% for fmt in formats %}
+            <option value="{{ fmt.name }}">{{ fmt.icon }} {{ fmt.display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-generate" onclick="runBatch()" id="batch-btn">
+        <span>Run Batch</span>
+      </button>
+      <div id="batch-progress" style="display:none">
+        <div class="meter-bar"><div class="meter-fill" id="batch-progress-fill" style="width:0%"></div></div>
+        <p class="meter-label" id="batch-progress-label">Starting...</p>
+      </div>
+    </div>
+    <div>
+      <div id="batch-results"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Prompt Library -->
+<div class="section" id="prompt-library" style="display:none">
+  <div class="section-header">
+    <h2>Prompt Templates</h2>
+    <button class="btn btn-primary btn-sm" onclick="showNewTemplateModal()">+ New Template</button>
+  </div>
+
+  {% if templates %}
+  <div class="template-grid">
+    {% for t in templates %}
+    <div class="template-card" data-id="{{ t.id }}">
+      <div class="template-header">
+        <span class="template-name">{{ t.name }}</span>
+        <span class="template-category">{{ t.category }}</span>
+      </div>
+      <p class="template-preview">{{ t.prompt_text[:100] }}{% if t.prompt_text|length > 100 %}...{% endif %}</p>
+      <div class="template-footer">
+        <button class="btn btn-ghost btn-xs" onclick="useTemplate('{{ t.id }}')">Use</button>
+        <button class="btn btn-ghost btn-xs" onclick="deleteTemplate('{{ t.id }}')">Delete</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state small">
+    <p class="text-muted">No templates yet. Create one to save your favorite prompts!</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Folders Section -->
+<div class="section folders-section" style="display:none">
+  <div class="section-header">
+    <h2>📁 Content Organizer</h2>
+    <button class="btn btn-primary btn-sm" onclick="createFolder()">+ Folder</button>
+  </div>
+  {% if folders %}
+  <div class="folder-list">
+    {% for f in folders %}
+    <div class="folder-chip" onclick="alert('Folder #{{ f.id }}')">
+      📁 {{ f.name }}
+      <span class="delete-x" onclick="event.stopPropagation();deleteFolder({{ f.id }})">&times;</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-muted">No folders yet. Create your first folder to organize content.</p>
+  {% endif %}
+</div>
+
+<!-- Recent Activity -->
 {% if recent %}
 <div class="section">
   <div class="section-header">
@@ -162,17 +337,75 @@
       </div>
       <div class="history-detail">
         <span class="history-prompt">{{ gen.prompt[:80] }}{% if gen.prompt|length > 80 %}...{% endif %}</span>
-        <span class="history-meta">{{ gen.model or gen.type }} &middot; {{ gen.created_at[:10] }}</span>
+        <span class="history-meta">{{ gen.model or gen.type }} &middot; {{ gen.created_at[:10] }} {% if gen.provider and gen.provider != 'gemini' %}&middot; {{ gen.provider }}{% endif %}</span>
       </div>
+      {% if gen.content %}
+      <div class="export-dropdown">
+        <button class="btn btn-ghost btn-xs" onclick="toggleExport({{ gen.id }})" title="Export">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <div class="export-menu" id="export-{{ gen.id }}">
+          <button onclick="exportContent({{ gen.id }}, 'markdown')"> Markdown</button>
+          <button onclick="exportContent({{ gen.id }}, 'html')"> HTML</button>
+          <button onclick="exportContent({{ gen.id }}, 'text')"> Plain Text</button>
+        </div>
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
 </div>
 {% endif %}
+
+<!-- New Template Modal -->
+<div class="modal-overlay" id="template-modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>New Prompt Template</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Template Name</label>
+        <input type="text" id="template-name" class="form-input" placeholder="e.g., Weekly Newsletter">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <select id="template-category" class="form-input">
+          <option value="general">General</option>
+          <option value="marketing">Marketing</option>
+          <option value="social">Social Media</option>
+          <option value="seo">SEO & Blogging</option>
+          <option value="email">Email</option>
+          <option value="creative">Creative Writing</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prompt Template</label>
+        <textarea id="template-prompt" class="form-input" rows="6" placeholder="Use {{ variable }} for dynamic content. E.g.: Write a blog post about {{ topic }} with a {{ tone }} tone."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description (optional)</label>
+        <input type="text" id="template-desc" class="form-input" placeholder="What is this template for?">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Save Template</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+const formats = {{ formats|tojson|safe }};
+const templates = {{ templates|tojson|safe }};
+const providers = {{ providers|tojson|safe }};
+const folders = {{ folders|tojson|safe }} || [];
+const presets = {{ presets|tojson|safe }} || [];
+
+// ─── Tab Switching ───────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -180,10 +413,88 @@ function switchTab(tab) {
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
 }
 
-function openGenerate() {
-  document.getElementById('generate').scrollIntoView({ behavior: 'smooth' });
+// ─── Format Change ───────────────────────────────────
+function onFormatChange(type) {
+  const select = document.getElementById(type + '-format');
+  const opt = select.options[select.selectedIndex];
+  const desc = opt.getAttribute('data-desc');
+  const prompt = opt.getAttribute('data-prompt');
+  const box = document.getElementById('format-description-box');
+  if (desc) {
+    document.getElementById('format-description').textContent = desc;
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
 }
 
+// ─── Provider Change ─────────────────────────────────
+function onProviderChange(type) {
+  const select = document.getElementById(type + '-provider');
+  const provider = select.value;
+  const modelSelect = document.getElementById(type + '-model');
+
+  // Show appropriate models
+  const modelOpts = {
+    'gemini': ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-image'],
+    'openai': ['gpt-4o', 'gpt-4o-mini', 'dall-e-3'],
+    'anthropic': ['claude-sonnet-4-20250514', 'claude-opus-4-20250514'],
+  };
+
+  const available = modelOpts[provider] || [];
+  modelSelect.innerHTML = available.map(m =>
+    `<option value="${m}">${m}</option>`
+  ).join('');
+}
+
+// ─── TEXT GENERATION ─────────────────────────────────
+async function generateText() {
+  const prompt = document.getElementById('text-prompt').value.trim();
+  if (!prompt) return showError('Please enter a prompt');
+
+  const btn = document.getElementById('gen-text-btn');
+  btn.disabled = true;
+  btn.querySelector('.btn-label').textContent = 'Generating...';
+  btn.querySelector('.spinner').style.display = 'inline-block';
+  clearResult();
+
+  const formatSelect = document.getElementById('text-format');
+  const formatType = formatSelect.value;
+  const formatOpt = formatSelect.options[formatSelect.selectedIndex];
+  const systemPrompt = formatOpt.getAttribute('data-prompt') || '';
+  const tone = document.getElementById('text-tone').value;
+
+  // Apply tone if selected
+  let finalSystem = systemPrompt;
+  if (tone) {
+    finalSystem = (systemPrompt ? systemPrompt + ' ' : '') + `Use a ${tone} tone.`;
+  }
+
+  try {
+    const res = await fetch('{{ url_for("text.generate_text") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        provider: document.getElementById('text-provider').value,
+        model: document.getElementById('text-model').value,
+        format_type: formatType,
+        system_prompt: finalSystem,
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) return showError(data.error || 'Generation failed');
+    showText(data.text);
+  } catch (e) {
+    showError('Network error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-label').textContent = 'Generate';
+    btn.querySelector('.spinner').style.display = 'none';
+  }
+}
+
+// ─── IMAGE GENERATION ────────────────────────────────
 async function generateImage() {
   const prompt = document.getElementById('image-prompt').value.trim();
   if (!prompt) return showError('Please enter a prompt');
@@ -200,8 +511,9 @@ async function generateImage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt,
+        provider: document.getElementById('image-provider').value,
         model: document.getElementById('image-model').value,
-        aspect_ratio: document.getElementById('aspect-ratio').value
+        aspect_ratio: document.getElementById('aspect-ratio').value,
       })
     });
     const data = await res.json();
@@ -222,39 +534,8 @@ async function generateImage() {
   }
 }
 
-async function generateText() {
-  const prompt = document.getElementById('text-prompt').value.trim();
-  if (!prompt) return showError('Please enter a prompt');
-
-  const btn = document.getElementById('gen-text-btn');
-  btn.disabled = true;
-  btn.querySelector('.btn-label').textContent = 'Generating...';
-  btn.querySelector('.spinner').style.display = 'inline-block';
-  clearResult();
-
-  try {
-    const res = await fetch('{{ url_for("text.generate_text") }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        model: document.getElementById('text-model').value
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) return showError(data.error || 'Generation failed');
-    showText(data.text);
-  } catch (e) {
-    showError('Network error: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.querySelector('.btn-label').textContent = 'Generate Text';
-    btn.querySelector('.spinner').style.display = 'none';
-  }
-}
-
+// ─── DISPLAY HELPERS ─────────────────────────────────
 function showImage(dataUrl, remaining) {
-  const resultArea = document.getElementById('result-area');
   document.getElementById('result-placeholder').style.display = 'none';
   document.getElementById('result-content').style.display = 'block';
   document.getElementById('result-error').style.display = 'none';
@@ -300,6 +581,7 @@ function clearResult() {
 function copyResult() {
   if (window._lastText) {
     navigator.clipboard.writeText(window._lastText);
+    showToast('Copied to clipboard!', 'success');
   }
 }
 
@@ -307,6 +589,168 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// ─── EXPORT ──────────────────────────────────────
+function toggleExport(id) {
+  const menu = document.getElementById('export-' + id);
+  if (menu) menu.classList.toggle('open');
+}
+
+async function exportContent(id, format) {
+  try {
+    const res = await fetch(`{{ url_for("export.list_exports") }}/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: format }),
+    });
+    if (!res.ok) throw new Error('Export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `content-${id}.${format === 'markdown' ? 'md' : format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Downloaded!', 'success');
+  } catch (e) {
+    showToast('Export error: ' + e.message, 'danger');
+  }
+  document.querySelectorAll('.export-menu').forEach(m => m.classList.remove('open'));
+}
+
+// ─── BATCH GENERATION ────────────────────────────
+async function runBatch() {
+  const name = document.getElementById('batch-name').value.trim();
+  const prompt = document.getElementById('batch-prompt').value.trim();
+  const varsText = document.getElementById('batch-variables').value.trim();
+  if (!name || !prompt || !varsText) return showError('Fill all batch fields');
+
+  let variables;
+  try { variables = JSON.parse(varsText); } catch(e) { return showError('Invalid JSON in variables'); }
+
+  const btn = document.getElementById('batch-btn');
+  btn.disabled = true;
+  btn.textContent = 'Creating job...';
+
+  try {
+    const res = await fetch('{{ url_for("batch.create_job") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name, prompt_template: prompt, variables,
+        provider: document.getElementById('batch-provider').value,
+        model: document.getElementById('batch-model').value,
+        format_type: document.getElementById('batch-format').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    btn.textContent = 'Executing...';
+    document.getElementById('batch-progress').style.display = 'block';
+
+    const execRes = await fetch(`{{ url_for("batch.list_batch_jobs") }}/${data.id}/execute`, {
+      method: 'POST',
+    });
+    const execData = await execRes.json();
+    if (!execRes.ok) throw new Error(execData.error);
+
+    // Show results
+    const resultsDiv = document.getElementById('batch-results');
+    let html = `<p>✅ Batch complete: ${execData.completed}/${execData.total}</p>`;
+    if (execData.results) {
+      execData.results.forEach(r => {
+        html += `<div class="history-item" style="margin-top:8px"><div class="history-detail"><span class="history-prompt">${escapeHtml(JSON.stringify(r.vars))}</span></div></div>`;
+      });
+    }
+    if (execData.errors && execData.errors.length) {
+      html += `<p style="color:var(--danger);margin-top:8px">⚠ ${execData.errors.length} errors</p>`;
+    }
+    resultsDiv.innerHTML = html;
+    showToast('Batch complete!', 'success');
+  } catch (e) {
+    showToast('Batch error: ' + e.message, 'danger');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Batch';
+  }
+}
+
+// ─── FOLDERS ORGANIZER ────────────────────────────
+async function createFolder() {
+  const name = prompt('Folder name:');
+  if (!name) return;
+  const res = await fetch('{{ url_for("folders.list_folders") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (res.ok) {
+    showToast('Folder created!', 'success');
+    setTimeout(() => location.reload(), 800);
+  }
+}
+
+async function deleteFolder(id) {
+  if (!confirm('Delete folder? Content moves to root.')) return;
+  const res = await fetch(`{{ url_for("folders.list_folders") }}/${id}`, { method: 'DELETE' });
+  if (res.ok) { showToast('Folder deleted', 'info'); location.reload(); }
+}
+
+// ─── PROMPT LIBRARY ──────────────────────────────────
+function togglePromptLibrary() {
+  const lib = document.getElementById('prompt-library');
+  lib.style.display = lib.style.display === 'none' ? 'block' : 'none';
+}
+
+function showNewTemplateModal() {
+  document.getElementById('template-modal').style.display = 'flex';
+}
+
+function closeModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('template-modal').style.display = 'none';
+}
+
+async function saveTemplate() {
+  const name = document.getElementById('template-name').value.trim();
+  const prompt = document.getElementById('template-prompt').value.trim();
+  if (!name || !prompt) return showError('Name and prompt are required');
+
+  const res = await fetch('{{ url_for("prompts.list_templates") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      prompt_text: prompt,
+      category: document.getElementById('template-category').value,
+      description: document.getElementById('template-desc').value.trim(),
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) return showError(data.error || 'Failed to save');
+  showToast('Template saved!', 'success');
+  closeModal();
+  setTimeout(() => location.reload(), 1000);
+}
+
+async function useTemplate(id) {
+  const t = templates.find(t => t.id == id);
+  if (!t) return;
+  document.getElementById('text-prompt').value = t.prompt_text;
+  document.getElementById('prompt-library').style.display = 'none';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteTemplate(id) {
+  if (!confirm('Delete this template?')) return;
+  const res = await fetch(`{{ url_for("prompts.list_templates") }}/${id}`, {
+    method: 'DELETE'
+  });
+  if (res.ok) {
+    showToast('Template deleted', 'info');
+    location.reload();
+  }
 }
 </script>
 {% endblock %}

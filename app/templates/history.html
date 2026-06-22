@@ -1,10 +1,24 @@
 {% extends "base.html" %}
-{% block title %}History - AI Studio{% endblock %}
+{% block title %}History - {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h1>Generation History</h1>
-  <p class="text-muted">Your recent image and text generations</p>
+  <div class="page-header-row">
+    <div>
+      <h1>Generation History</h1>
+      <p class="text-muted">{{ total }} generations total</p>
+    </div>
+    <div class="search-box">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="search-input" class="form-input search-input"
+             placeholder="Search your content..." value="{{ search }}"
+             onkeydown="if(event.key==='Enter') searchContent()">
+      <button class="btn btn-ghost btn-sm" onclick="searchContent()">Search</button>
+      {% if search %}
+      <a href="{{ url_for('dashboard.history') }}" class="btn btn-ghost btn-sm">Clear</a>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
 {% if generations %}
@@ -19,18 +33,67 @@
       {% endif %}
     </div>
     <div class="history-detail">
-      <span class="history-prompt">{{ gen.prompt[:100] }}{% if gen.prompt|length > 100 %}...{% endif %}</span>
-      <span class="history-meta">{{ gen.model or gen.type }} &middot; {{ gen.created_at[:19] }}</span>
+      <span class="history-prompt">{{ gen.prompt[:120] }}{% if gen.prompt|length > 120 %}...{% endif %}</span>
+      <span class="history-meta">{{ gen.model or gen.type }} &middot; {{ gen.created_at[:19] }}
+        {% if gen.provider and gen.provider != 'gemini' %} &middot; {{ gen.provider }}{% endif %}
+        {% if gen.format_type and gen.format_type != 'general' %} &middot; {{ gen.format_type }}{% endif %}
+      </span>
     </div>
+    {% if gen.type == 'text' and gen.content %}
+    <button class="btn btn-ghost btn-xs" onclick="viewContent('{{ gen.id }}')">View</button>
+    {% elif gen.type == 'image' and gen.content %}
+    <button class="btn btn-ghost btn-xs" onclick="viewImage('{{ gen.content[:100] }}')">View</button>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?page={{ page - 1 }}{% if search %}&q={{ search }}{% endif %}" class="btn btn-ghost btn-sm">Previous</a>
+  {% endif %}
+  <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+  {% if page < total_pages %}
+  <a href="?page={{ page + 1 }}{% if search %}&q={{ search }}{% endif %}" class="btn btn-ghost btn-sm">Next</a>
+  {% endif %}
+</div>
+{% endif %}
+
 {% else %}
 <div class="empty-state">
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-  <h3>No generations yet</h3>
-  <p class="text-muted">Your generated content will appear here.</p>
+  <h3>{% if search %}No results found{% else %}No generations yet{% endif %}</h3>
+  <p class="text-muted">{% if search %}Try a different search term.{% else %}Your generated content will appear here.{% endif %}</p>
+  {% if not search %}
   <a href="{{ url_for('dashboard.index') }}#generate" class="btn btn-primary">Create Something</a>
+  {% endif %}
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function searchContent() {
+  const q = document.getElementById('search-input').value.trim();
+  if (q) {
+    window.location.href = '?q=' + encodeURIComponent(q);
+  } else {
+    window.location.href = '{{ url_for("dashboard.history") }}';
+  }
+}
+
+function viewContent(id) {
+  window._lastText = 'Loading...';
+  // For now, redirect to home - full content viewing in Phase 3
+  showToast('Content detail view coming soon!', 'info');
+}
+
+function viewImage(dataUrl) {
+  if (dataUrl.startsWith('data:')) {
+    window.open(dataUrl, '_blank');
+  }
+}
+</script>
 {% endblock %}

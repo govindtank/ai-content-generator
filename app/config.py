@@ -20,5 +20,8 @@ class Config:
     GEMINI_IMAGE_MODEL = os.environ.get(
         "GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"
     )
+    OPENAI_TEXT_MODEL = os.environ.get("OPENAI_TEXT_MODEL", "gpt-4o")
+    OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "dall-e-3")
+    ANTHROPIC_TEXT_MODEL = os.environ.get("ANTHROPIC_TEXT_MODEL", "claude-sonnet-4-20250514")
     PORT = int(os.environ.get("PORT", "8080"))
     HOST = os.environ.get("HOST", "0.0.0.0")

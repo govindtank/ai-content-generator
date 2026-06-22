@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% block title %}Content Workbench — ContentForge{% endblock %}
+{% block head_extra %}
+<style>
+.workbench-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.workbench-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+
+.card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+.card-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 0.4rem; }
+.card-header .badge { font-size: 0.65rem; padding: 0.15rem 0.5rem; }
+
+.content-editor { width: 100%; min-height: 300px; padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; resize: vertical; }
+.content-editor:focus { outline: none; border-color: var(--accent); }
+.editor-toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.editor-toolbar button { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-top: 0.75rem; }
+.compare-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; }
+.compare-card .model-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.35rem; }
+.compare-card .compare-content { font-size: 0.85rem; max-height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+
+.form-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.form-row select, .form-row input, .form-row button { padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+.form-row select { min-width: 120px; }
+
+.seo-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; margin: 0.5rem 0; }
+.seo-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; text-align: center; }
+.seo-stat .stat-value { font-size: 1.35rem; font-weight: 700; color: var(--accent); }
+.seo-stat .stat-label { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+
+.readability-bar { height: 6px; background: var(--border); border-radius: 3px; margin: 0.5rem 0; overflow: hidden; }
+.readability-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+.keyword-list { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+.keyword-tag { background: var(--accent); color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+
+.meta-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem; }
+.meta-preview .meta-title { color: #1a0dab; font-size: 1.1rem; }
+.meta-preview .meta-url { color: #006621; font-size: 0.85rem; }
+.meta-preview .meta-desc { color: #545454; font-size: 0.85rem; margin-top: 0.15rem; }
+
+@media (max-width: 768px) { .workbench-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Content Workbench</h2>
+  <span class="badge badge-accent">v3</span>
+</div>
+
+<div class="workbench-grid">
+
+  <!-- ─── EDITOR ─── -->
+  <div class="workbench-card">
+    <div class="card-header">
+      <h3>✏️ Editor</h3>
+      <span class="badge">Edit & Refine</span>
+    </div>
+    <div class="editor-toolbar">
+      <button class="btn btn-ghost btn-sm" onclick="loadContent()" title="Load last generated content">📂 Load Last</button>
+      <button class="btn btn-ghost btn-sm" onclick="saveEdits()" title="Save edits">💾 Save</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearEditor()" title="Clear">🗑️ Clear</button>
+    </div>
+    <textarea id="editor" class="content-editor" placeholder="Paste or load content to edit... You can also generate and then refine here."></textarea>
+    <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--muted);margin-top:0.35rem;">
+      <span id="word-count">0 words</span>
+      <span id="char-count">0 chars</span>
+    </div>
+  </div>
+
+  <!-- ─── REFINE ─── -->
+  <div class="workbench-card">
+    <div class="card-header">
+      <h3>🔄 Refinement</h3>
+      <span class="badge badge-accent">AI</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 0.75rem 0;">
+      Rephrase, expand, or transform your content with AI.
+    </p>
+    <div class="form-row" style="margin-bottom:0.5rem;">
+      <select id="refine-action" style="flex:1;">
+        <option value="improve">✨ Improve & Polish</option>
+        <option value="simplify">📖 Simplify</option>
+        <option value="expand">📚 Expand</option>
+        <option value="shorten">✂️ Shorten</option>
+        <option value="professional">👔 Professional</option>
+        <option value="casual">😊 Casual</option>
+      </select>
+      <select id="refine-provider" style="width:100px;">
+        <option value="gemini">Gemini</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+      </select>
+      <button class="btn btn-accent btn-sm" onclick="refineContent()">Refine</button>
+    </div>
+    <div id="refine-spinner" class="spinner" style="display:none;">Generating…</div>
+    <div id="refine-result" style="font-size:0.85rem;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;"></div>
+    <button id="refine-apply-btn" class="btn btn-ghost btn-sm" style="display:none;margin-top:0.5rem;" onclick="applyRefinement()">Apply to Editor</button>
+  </div>
+
+  <!-- ─── REPURPOSE ─── -->
+  <div class="workbench-card">
+    <div class="card-header">
+      <h3>🔄 Repurpose</h3>
+      <span class="badge badge-accent">AI</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 0.75rem 0;">
+      Convert content from one format to another.
+    </p>
+    <div class="form-row" style="margin-bottom:0.5rem;">
+      <select id="repurpose-format" style="flex:1;">
+        <option value="blog-post">📝 Blog Post</option>
+        <option value="twitter-thread">🐦 Twitter/X Thread</option>
+        <option value="linkedin-post">💼 LinkedIn Post</option>
+        <option value="email-newsletter">📧 Email Newsletter</option>
+        <option value="ad-copy">📢 Ad Copy</option>
+        <option value="social-post">📱 Social Post</option>
+        <option value="video-script">🎬 Video Script</option>
+      </select>
+      <button class="btn btn-accent btn-sm" onclick="repurposeContent()">Convert</button>
+    </div>
+    <div id="repurpose-spinner" class="spinner" style="display:none;">Converting…</div>
+    <div id="repurpose-result" style="font-size:0.85rem;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;"></div>
+    <button id="repurpose-apply-btn" class="btn btn-ghost btn-sm" style="display:none;margin-top:0.5rem;" onclick="applyRepurpose()">Apply to Editor</button>
+  </div>
+
+  <!-- ─── COMPARE ─── -->
+  <div class="workbench-card">
+    <div class="card-header">
+      <h3>⚖️ Model Compare</h3>
+      <span class="badge badge-accent">Multi-Model</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 0.75rem 0;">
+      Generate the same prompt with multiple models and compare results.
+    </p>
+    <div style="margin-bottom:0.5rem;">
+      <label style="font-size:0.8rem;color:var(--muted);display:block;margin-bottom:0.25rem;">Select models to compare (min 2):</label>
+      <div id="compare-model-list" style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+        <label style="font-size:0.85rem;"><input type="checkbox" value="gemini" checked> Gemini</label>
+        <label style="font-size:0.85rem;"><input type="checkbox" value="openai"> OpenAI</label>
+        <label style="font-size:0.85rem;"><input type="checkbox" value="anthropic"> Anthropic</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <input type="text" id="compare-prompt" placeholder="Prompt to compare across models..." style="flex:1;">
+      <button class="btn btn-accent btn-sm" onclick="compareModels()">Compare</button>
+    </div>
+    <div id="compare-spinner" class="spinner" style="display:none;">Generating across models…</div>
+  </div>
+
+</div>
+
+<!-- ─── COMPARE RESULTS ─── -->
+<div id="compare-results"></div>
+
+<!-- ─── SEO SECTION ─── -->
+<div class="workbench-card" style="margin-top:1.25rem;">
+  <div class="card-header">
+    <h3>🔍 SEO Analysis</h3>
+    <span class="badge">Readability & Keywords</span>
+  </div>
+  <div class="form-row" style="margin-bottom:0.75rem;">
+    <input type="text" id="seo-title" placeholder="Content title (optional)" style="flex:1;">
+    <button class="btn btn-ghost btn-sm" onclick="analyzeSEO()">Analyze</button>
+    <button class="btn btn-accent btn-sm" onclick="suggestMeta()">AI Meta Suggestions</button>
+  </div>
+  <div id="seo-results"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+// ─── EDITOR HELPERS ─────────────────────────────
+function updateCounts() {
+  const text = document.getElementById('editor').value;
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  document.getElementById('word-count').textContent = words + ' words';
+  document.getElementById('char-count').textContent = text.length + ' chars';
+}
+document.getElementById('editor').addEventListener('input', updateCounts);
+
+function clearEditor() {
+  document.getElementById('editor').value = '';
+  updateCounts();
+}
+
+async function loadContent() {
+  try {
+    const res = await fetch('/api/history?limit=1');
+    if (!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+    if (data.generations && data.generations.length > 0) {
+      const last = data.generations[0];
+      document.getElementById('editor').value = last.content || '';
+      document.getElementById('seo-title').value = last.prompt?.slice(0, 60) || '';
+      updateCounts();
+      showToast('Loaded latest content', 'success');
+    } else {
+      showToast('No content found', 'warning');
+    }
+  } catch (e) {
+    showToast('Load error: ' + e.message, 'danger');
+  }
+}
+
+async function saveEdits() {
+  const content = document.getElementById('editor').value.trim();
+  if (!content) { showToast('Nothing to save', 'warning'); return; }
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: '(Edited content)', content: content, type: 'text' }),
+    });
+    if (!res.ok) throw new Error('Save failed');
+    showToast('Content saved to history', 'success');
+  } catch (e) {
+    showToast('Save error: ' + e.message, 'danger');
+  }
+}
+
+// ─── REFINEMENT ─────────────────────────────────
+let _refinedContent = '';
+
+async function refineContent() {
+  const content = document.getElementById('editor').value.trim();
+  if (!content) { showToast('Editor is empty', 'warning'); return; }
+  const action = document.getElementById('refine-action').value;
+  const provider = document.getElementById('refine-provider').value;
+  const spinner = document.getElementById('refine-spinner');
+  const resultDiv = document.getElementById('refine-result');
+  const applyBtn = document.getElementById('refine-apply-btn');
+
+  spinner.style.display = '';
+  resultDiv.textContent = '';
+  applyBtn.style.display = 'none';
+  _refinedContent = '';
+
+  try {
+    const res = await fetch('/api/workbench/refine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, instruction: action, provider }),
+    });
+    if (!res.ok) throw new Error('Refinement failed');
+    const data = await res.json();
+    _refinedContent = data.content;
+    resultDiv.textContent = data.content || '(empty result)';
+    applyBtn.style.display = data.content ? '' : 'none';
+  } catch (e) {
+    resultDiv.textContent = 'Error: ' + e.message;
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+function applyRefinement() {
+  if (_refinedContent) {
+    document.getElementById('editor').value = _refinedContent;
+    updateCounts();
+    document.getElementById('refine-result').textContent = '';
+    document.getElementById('refine-apply-btn').style.display = 'none';
+    showToast('Refined content applied', 'success');
+  }
+}
+
+// ─── REPURPOSE ──────────────────────────────────
+let _repurposedContent = '';
+
+async function repurposeContent() {
+  const content = document.getElementById('editor').value.trim();
+  if (!content) { showToast('Editor is empty', 'warning'); return; }
+  const format = document.getElementById('repurpose-format').value;
+  const spinner = document.getElementById('repurpose-spinner');
+  const resultDiv = document.getElementById('repurpose-result');
+  const applyBtn = document.getElementById('repurpose-apply-btn');
+
+  spinner.style.display = '';
+  resultDiv.textContent = '';
+  applyBtn.style.display = 'none';
+  _repurposedContent = '';
+
+  try {
+    const res = await fetch('/api/workbench/repurpose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, format }),
+    });
+    if (!res.ok) throw new Error('Repurpose failed');
+    const data = await res.json();
+    _repurposedContent = data.content;
+    resultDiv.textContent = data.content || '(empty result)';
+    applyBtn.style.display = data.content ? '' : 'none';
+  } catch (e) {
+    resultDiv.textContent = 'Error: ' + e.message;
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+function applyRepurpose() {
+  if (_repurposedContent) {
+    document.getElementById('editor').value = _repurposedContent;
+    updateCounts();
+    document.getElementById('repurpose-result').textContent = '';
+    document.getElementById('repurpose-apply-btn').style.display = 'none';
+    showToast('Repurposed content applied', 'success');
+  }
+}
+
+// ─── MULTI-MODEL COMPARE ────────────────────────
+async function compareModels() {
+  const prompt = document.getElementById('compare-prompt').value.trim();
+  if (!prompt) { showToast('Enter a prompt to compare', 'warning'); return; }
+
+  const checked = document.querySelectorAll('#compare-model-list input:checked');
+  if (checked.length < 2) { showToast('Select at least 2 models', 'warning'); return; }
+
+  const models = Array.from(checked).map(cb => ({
+    provider: cb.value,
+    model: cb.value,
+  }));
+
+  document.getElementById('compare-spinner').style.display = '';
+  document.getElementById('compare-results').innerHTML = '';
+
+  try {
+    const res = await fetch('/api/workbench/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, models }),
+    });
+    if (!res.ok) throw new Error('Compare failed');
+    const data = await res.json();
+
+    let html = '<div class="compare-grid">';
+    data.results.forEach(r => {
+      const firstLine = r.content?.split('\n')[0] || '';
+      html += `<div class="compare-card">
+        <div class="model-label">🔵 ${r.provider} / ${r.model}</div>
+        <div class="compare-content">${escapeHtml(r.content || '(empty)')}</div>
+      </div>`;
+    });
+    html += '</div>';
+
+    if (data.errors.length) {
+      html += '<div style="margin-top:0.75rem;font-size:0.85rem;color:var(--danger);">';
+      data.errors.forEach(e => { html += `<div>⚠️ ${e.model}: ${e.error}</div>`; });
+      html += '</div>';
+    }
+
+    document.getElementById('compare-results').innerHTML = html;
+
+    if (data.results.length) {
+      showToast(`Compared ${data.results.length} models`, data.errors.length ? 'warning' : 'success');
+    }
+  } catch (e) {
+    document.getElementById('compare-results').innerHTML = `<div style="color:var(--danger)">Error: ${e.message}</div>`;
+  } finally {
+    document.getElementById('compare-spinner').style.display = 'none';
+  }
+}
+
+// ─── SEO ─────────────────────────────────────────
+async function analyzeSEO() {
+  const content = document.getElementById('editor').value.trim();
+  if (!content) { showToast('Editor is empty', 'warning'); return; }
+  document.getElementById('seo-results').innerHTML = '<div class="spinner">Analyzing…</div>';
+
+  try {
+    const res = await fetch('/api/seo/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error('Analysis failed');
+    const data = await res.json();
+    renderSEO(data);
+  } catch (e) {
+    document.getElementById('seo-results').innerHTML = `<div style="color:var(--danger)">Error: ${e.message}</div>`;
+  }
+}
+
+function renderSEO(data) {
+  const r = data.readability;
+  const score = r.score;
+  const barColor = score >= 70 ? 'var(--success)' : score >= 50 ? 'var(--warning)' : 'var(--danger)';
+
+  let html = `
+    <div class="seo-stats">
+      <div class="seo-stat"><div class="stat-value">${r.words}</div><div class="stat-label">Words</div></div>
+      <div class="seo-stat"><div class="stat-value">${r.sentences}</div><div class="stat-label">Sentences</div></div>
+      <div class="seo-stat"><div class="stat-value">${r.syllables}</div><div class="stat-label">Syllables</div></div>
+      <div class="seo-stat"><div class="stat-value">${data.estimated_read_time}m</div><div class="stat-label">Read Time</div></div>
+    </div>
+    <div style="font-size:0.85rem;margin-bottom:0.35rem;">
+      <strong>Readability:</strong> ${r.level} &middot; Flesch Score: ${r.score}
+    </div>
+    <div class="readability-bar"><div class="readability-fill" style="width:${r.score}%;background:${barColor};"></div></div>
+  `;
+
+  if (data.keywords && data.keywords.length) {
+    html += '<div style="font-size:0.85rem;margin-top:0.75rem;"><strong>Top Keywords:</strong></div><div class="keyword-list">';
+    data.keywords.forEach(k => {
+      html += `<span class="keyword-tag">${k.word} (${k.count})</span>`;
+    });
+    html += '</div>';
+  }
+
+  document.getElementById('seo-results').innerHTML = html;
+}
+
+async function suggestMeta() {
+  const content = document.getElementById('editor').value.trim();
+  if (!content) { showToast('Editor is empty', 'warning'); return; }
+  const title = document.getElementById('seo-title').value.trim();
+  document.getElementById('seo-results').innerHTML = '<div class="spinner">Generating SEO suggestions…</div>';
+
+  try {
+    const res = await fetch('/api/seo/suggest-meta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, title }),
+    });
+    if (!res.ok) throw new Error('Meta suggestion failed');
+    const data = await res.json();
+
+    let html = '';
+    if (data.readability) {
+      const r = data.readability;
+      html += `<div class="seo-stats">
+        <div class="seo-stat"><div class="stat-value">${r.words}</div><div class="stat-label">Words</div></div>
+        <div class="seo-stat"><div class="stat-value">${r.score}</div><div class="stat-label">Flesch Score</div></div>
+        <div class="seo-stat"><div class="stat-value">${data.estimated_read_time || '—'}</div><div class="stat-label">Read Time</div></div>
+      </div>`;
+    }
+
+    if (data.meta_title || data.meta_description) {
+      html += '<div class="meta-preview">';
+      html += `<div class="meta-title">${escapeHtml(data.meta_title || '(no title)')}</div>`;
+      html += `<div class="meta-url">contentforge.local/</div>`;
+      html += `<div class="meta-desc">${escapeHtml((data.meta_description || '').slice(0, 160))}</div>`;
+      html += '</div>';
+    }
+
+    if (data.focus_keyphrase) {
+      html += `<div style="margin-top:0.5rem;font-size:0.85rem;"><strong>Focus Keyphrase:</strong> <span class="keyword-tag">${escapeHtml(data.focus_keyphrase)}</span></div>`;
+    }
+
+    if (data.tags && data.tags.length) {
+      html += '<div style="margin-top:0.5rem;font-size:0.85rem;"><strong>Suggested Tags:</strong></div><div class="keyword-list">';
+      data.tags.forEach(t => { html += `<span class="keyword-tag">${escapeHtml(t)}</span>`; });
+      html += '</div>';
+    }
+
+    document.getElementById('seo-results').innerHTML = html || '<div style="color:var(--muted)">No suggestions generated</div>';
+  } catch (e) {
+    document.getElementById('seo-results').innerHTML = `<div style="color:var(--danger)">Error: ${e.message}</div>`;
+  }
+}
+</script>
+{% endblock %}

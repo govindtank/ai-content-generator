@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Settings - AI Studio{% endblock %}
+{% block title %}Settings - {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <h1>Settings</h1>
-  <p class="text-muted">Manage your account and API key</p>
+  <p class="text-muted">Manage your account and API keys</p>
 </div>
 
 <div class="settings-grid">
@@ -25,46 +25,123 @@
     </div>
   </div>
 
+  <!-- API Keys Section -->
   <div class="settings-card">
-    <h3>Gemini API Key</h3>
-    <p class="text-muted">Your API key is used to generate content via Google's Gemini models. Get a free key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</p>
-    <form method="POST">
-      <div class="form-group">
-        <label for="gemini_api_key" class="form-label">API Key</label>
-        <div class="api-key-input">
-          <input type="password" name="gemini_api_key" id="gemini_api_key" class="form-input"
-                 value="{{ user.gemini_api_key or '' }}"
-                 placeholder="Enter your Gemini API key"
-                 autocomplete="off">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="toggleKey()" id="toggle-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
+    <h3>AI Provider API Keys</h3>
+    <p class="text-muted">Add API keys for the AI providers you want to use. ContentForge supports multiple providers — you can switch between them when generating content.</p>
+
+    <div class="provider-keys">
+      {% for p in providers %}
+      <div class="provider-key-card" data-provider="{{ p.slug }}">
+        <div class="provider-key-header">
+          <div class="provider-info">
+            <span class="provider-name">{{ p.name }}</span>
+            <span class="provider-capabilities">
+              {% if p.supports_text %}Text ✓{% endif %}
+              {% if p.supports_image %}Image ✓{% endif %}
+            </span>
+          </div>
+          <span class="provider-status {% if provider_keys.get(p.slug) %}connected{% else %}disconnected{% endif %}"
+                id="status-{{ p.slug }}">
+            {{ 'Connected' if provider_keys.get(p.slug) else 'Not configured' }}
+          </span>
+        </div>
+
+        <div class="provider-key-form">
+          <div class="api-key-input">
+            <input type="password" class="form-input" id="key-{{ p.slug }}"
+                   placeholder="Enter your {{ p.name }} API key..."
+                   value="{{ provider_keys.get(p.slug, '') }}"
+                   autocomplete="off">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleKey('key-{{ p.slug }}')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="saveProviderKey('{{ p.slug }}')">Save</button>
+            {% if provider_keys.get(p.slug) %}
+            <button class="btn btn-ghost btn-sm" onclick="deleteProviderKey('{{ p.slug }}')">Remove</button>
+            {% endif %}
+          </div>
+          <div class="key-feedback" id="feedback-{{ p.slug }}"></div>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Usage</label>
-        <div class="usage-stats">
-          <div class="stat"><span class="stat-value">{{ user.image_generations_used }}</span> Images used</div>
-          <div class="stat"><span class="stat-value">{{ user.image_generations_limit - user.image_generations_used }}</span> Images remaining</div>
-        </div>
-      </div>
-      {% if not user.is_subscribed and user.image_generations_used >= user.image_generations_limit %}
-      <div class="upgrade-banner">
-        <p>You've used all your free image generations.</p>
-        <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary btn-sm">View Plans</a>
-      </div>
-      {% endif %}
-      <button type="submit" class="btn btn-primary">Save Changes</button>
-    </form>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Legacy Gemini Key -->
+  {% if user.gemini_api_key and not provider_keys.get('gemini') %}
+  <div class="settings-card">
+    <h3>Legacy Gemini Key</h3>
+    <p class="text-muted">You have a saved Gemini API key from the previous version. It's still active but we recommend re-saving it in the provider section above.</p>
+  </div>
+  {% endif %}
+
+  <!-- Usage Stats -->
+  <div class="settings-card">
+    <h3>Usage</h3>
+    <div class="usage-stats">
+      <div class="stat"><span class="stat-value">{{ user.image_generations_used }}</span> Images generated</div>
+      <div class="stat"><span class="stat-value">{{ user.image_generations_limit - user.image_generations_used }}</span> Images remaining</div>
+    </div>
+    {% if not user.is_subscribed and user.image_generations_used >= user.image_generations_limit %}
+    <div class="upgrade-banner">
+      <p>You've used all your free image generations. Subscribe to continue generating images.</p>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function toggleKey() {
-  const input = document.getElementById('gemini_api_key');
+function toggleKey(inputId) {
+  const input = document.getElementById(inputId);
   input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function saveProviderKey(provider) {
+  const input = document.getElementById('key-' + provider);
+  const apiKey = input.value.trim();
+  if (!apiKey) return showError('API key is required');
+
+  const feedback = document.getElementById('feedback-' + provider);
+  feedback.textContent = 'Validating...';
+  feedback.className = 'key-feedback';
+
+  try {
+    const res = await fetch('/api/providers/' + provider + '/key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      feedback.textContent = data.error || 'Failed to save key';
+      feedback.className = 'key-feedback error';
+      return;
+    }
+    feedback.textContent = '✓ Key saved and validated!';
+    feedback.className = 'key-feedback success';
+    document.getElementById('status-' + provider).textContent = 'Connected';
+    document.getElementById('status-' + provider).className = 'provider-status connected';
+    showToast(provider.charAt(0).toUpperCase() + provider.slice(1) + ' key saved!', 'success');
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    feedback.textContent = 'Network error: ' + e.message;
+    feedback.className = 'key-feedback error';
+  }
+}
+
+async function deleteProviderKey(provider) {
+  if (!confirm('Remove this API key?')) return;
+  const res = await fetch('/api/providers/' + provider + '/key', { method: 'DELETE' });
+  if (res.ok) {
+    document.getElementById('status-' + provider).textContent = 'Not configured';
+    document.getElementById('status-' + provider).className = 'provider-status disconnected';
+    document.getElementById('key-' + provider).value = '';
+    showToast('Key removed', 'info');
+    setTimeout(() => location.reload(), 1000);
+  }
 }
 </script>
 {% endblock %}
