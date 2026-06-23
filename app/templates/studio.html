@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}Studio — ContentForge{% endblock %}
+{% block head_extra %}
+<style>
+.studio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+@media (max-width: 768px) { .studio-grid { grid-template-columns: 1fr; } }
+
+.calendar-nav { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+.calendar-nav h3 { margin: 0; flex: 1; text-align: center; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.calendar-header { text-align: center; font-size: 0.75rem; color: var(--muted); padding: 0.35rem 0; font-weight: 600; }
+.calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 0.25rem; background: var(--bg); border-radius: 4px; font-size: 0.75rem; cursor: pointer; transition: background 0.15s; }
+.calendar-day:hover { background: var(--border); }
+.calendar-day.other-month { opacity: 0.35; }
+.calendar-day.today { border: 1px solid var(--accent); }
+.calendar-day .day-num { font-weight: 600; }
+.calendar-day .event-dot { width: 4px; height: 4px; background: var(--accent); border-radius: 50%; margin-top: 2px; }
+
+.event-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+.event-row:last-child { border-bottom: none; }
+.event-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.event-status.draft { background: var(--muted); }
+.event-status.scheduled { background: var(--accent); }
+.event-status.published { background: var(--success); }
+
+.campaign-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
+.campaign-card .campaign-header { display: flex; justify-content: space-between; align-items: center; }
+.campaign-card .campaign-name { font-weight: 600; }
+.campaign-card .campaign-meta { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+
+.stat-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+.stat-box { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; text-align: center; }
+.stat-box .stat-num { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.stat-box .stat-label { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+
+.chart-bar-container { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin-top: 0.5rem; }
+.chart-bar { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; opacity: 0.7; min-height: 2px; transition: opacity 0.2s; }
+.chart-bar:hover { opacity: 1; }
+
+.toast { position: fixed; bottom: 1rem; right: 1rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; z-index: 9999; color: #fff; }
+.toast-success { background: #16a34a; }
+.toast-warning { background: #d97706; }
+.toast-danger { background: #dc2626; }
+.toast-info { background: #2563eb; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>🎬 Studio</h2>
+  <span class="badge badge-accent">v4</span>
+</div>
+
+<div class="studio-grid">
+
+  <!-- ─── CALENDAR ─── -->
+  <div class="card">
+    <div class="card-header">
+      <h3>📅 Content Calendar</h3>
+      <button class="btn btn-ghost btn-sm" onclick="showAddEvent()">+ Add</button>
+    </div>
+    <div class="calendar-nav">
+      <button class="btn btn-ghost btn-sm" onclick="changeMonth(-1)">←</button>
+      <h3 id="calendar-title"></h3>
+      <button class="btn btn-ghost btn-sm" onclick="changeMonth(1)">→</button>
+    </div>
+    <div class="calendar-grid" id="calendar-grid"></div>
+    <div style="margin-top:0.75rem;" id="calendar-events-list">
+      <div class="spinner">Loading events…</div>
+    </div>
+  </div>
+
+  <!-- ─── CAMPAIGNS ─── -->
+  <div class="card">
+    <div class="card-header">
+      <h3>🎯 Campaigns</h3>
+      <button class="btn btn-ghost btn-sm" onclick="showAddCampaign()">+ New</button>
+    </div>
+    <div id="campaigns-list">
+      <div class="spinner">Loading campaigns…</div>
+    </div>
+  </div>
+
+  <!-- ─── ANALYTICS ─── -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-header">
+      <h3>📊 Analytics</h3>
+    </div>
+    <div id="analytics-content">
+      <div class="spinner">Loading analytics…</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── ADD EVENT MODAL ─── -->
+<div id="event-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:400px;max-width:90vw;">
+    <h4 style="margin:0 0 1rem;">New Calendar Event</h4>
+    <input type="text" id="event-title" placeholder="Event title" style="width:100%;margin-bottom:0.5rem;">
+    <input type="date" id="event-date" style="width:100%;margin-bottom:0.5rem;">
+    <select id="event-platform" style="width:100%;margin-bottom:0.5rem;">
+      <option value="blog">Blog</option>
+      <option value="social">Social Media</option>
+      <option value="email">Email</option>
+      <option value="video">Video</option>
+    </select>
+    <select id="event-status" style="width:100%;margin-bottom:0.5rem;">
+      <option value="draft">Draft</option>
+      <option value="scheduled">Scheduled</option>
+      <option value="published">Published</option>
+    </select>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeEventModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveEvent()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ADD CAMPAIGN MODAL ─── -->
+<div id="campaign-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:450px;max-width:90vw;">
+    <h4 style="margin:0 0 1rem;">New Campaign</h4>
+    <input type="text" id="campaign-name" placeholder="Campaign name" style="width:100%;margin-bottom:0.5rem;">
+    <textarea id="campaign-desc" placeholder="Description / goals" style="width:100%;margin-bottom:0.5rem;min-height:60px;"></textarea>
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+      <input type="date" id="campaign-start" style="flex:1;" placeholder="Start date">
+      <input type="date" id="campaign-end" style="flex:1;" placeholder="End date">
+    </div>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeCampaignModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveCampaign()">Create</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+// ─── STATE ─────────────────────────────────────────
+let currentMonth = new Date().getMonth();
+let currentYear = new Date().getFullYear();
+let calendarEvents = [];
+
+// ─── CALENDAR ─────────────────────────────────────
+function renderCalendar() {
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calendar-title').textContent = monthNames[currentMonth] + ' ' + currentYear;
+
+  const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const daysInPrev = new Date(currentYear, currentMonth, 0).getDate();
+  const today = new Date();
+
+  let html = '';
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => {
+    html += `<div class="calendar-header">${d}</div>`;
+  });
+
+  // Prev month days
+  for (let i = firstDay - 1; i >= 0; i--) {
+    html += `<div class="calendar-day other-month"><span class="day-num">${daysInPrev - i}</span></div>`;
+  }
+
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = today.getFullYear() === currentYear && today.getMonth() === currentMonth && today.getDate() === d;
+    const dayEvents = calendarEvents.filter(e => e.event_date === dateStr);
+    html += `<div class="calendar-day ${isToday ? 'today' : ''}" onclick="showDayEvents('${dateStr}')">
+      <span class="day-num">${d}</span>
+      ${dayEvents.length ? '<div class="event-dot"></div>'.repeat(Math.min(dayEvents.length, 3)) : ''}
+    </div>`;
+  }
+
+  // Next month days
+  const remaining = 42 - (firstDay + daysInMonth);
+  for (let i = 1; i <= remaining; i++) {
+    html += `<div class="calendar-day other-month"><span class="day-num">${i}</span></div>`;
+  }
+
+  document.getElementById('calendar-grid').innerHTML = html;
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  loadEvents();
+}
+
+function showDayEvents(dateStr) {
+  const dayEvents = calendarEvents.filter(e => e.event_date === dateStr);
+  if (!dayEvents.length) {
+    showAddEvent(dateStr);
+    return;
+  }
+  let html = `<div style="font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">📅 ${dateStr}</div>`;
+  dayEvents.forEach(e => {
+    html += `<div class="event-row">
+      <span class="event-status ${e.status}"></span>
+      <span>${escapeHtml(e.title)}</span>
+      <span style="color:var(--muted);font-size:0.75rem;">${e.platform}</span>
+      <button class="btn btn-ghost btn-xs" onclick="deleteEvent(${e.id})" style="margin-left:auto;">✕</button>
+    </div>`;
+  });
+  document.getElementById('calendar-events-list').innerHTML = html;
+}
+
+async function loadEvents() {
+  const month = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}`;
+  try {
+    const res = await fetch(`/api/calendar?month=${month}`);
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    calendarEvents = data.events || [];
+    renderCalendar();
+    if (calendarEvents.length) {
+      showDayEvents(calendarEvents[0].event_date);
+    } else {
+      document.getElementById('calendar-events-list').innerHTML = '<div style="color:var(--muted);font-size:0.85rem;">No events this month. Click + to add.</div>';
+    }
+  } catch (e) {
+    document.getElementById('calendar-events-list').innerHTML = '<div style="color:var(--danger)">Failed to load</div>';
+  }
+}
+
+function showAddEvent(dateStr) {
+  document.getElementById('event-modal').style.display = 'flex';
+  document.getElementById('event-title').value = '';
+  document.getElementById('event-date').value = dateStr || new Date().toISOString().split('T')[0];
+}
+
+function closeEventModal() {
+  document.getElementById('event-modal').style.display = 'none';
+}
+
+async function saveEvent() {
+  const title = document.getElementById('event-title').value.trim();
+  const date = document.getElementById('event-date').value;
+  const platform = document.getElementById('event-platform').value;
+  const status = document.getElementById('event-status').value;
+  if (!title || !date) { showToast('Title and date required', 'warning'); return; }
+  try {
+    const res = await fetch('/api/calendar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, event_date: date, platform, status }),
+    });
+    if (!res.ok) throw new Error('Failed');
+    closeEventModal();
+    loadEvents();
+    showToast('Event added', 'success');
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  }
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Delete this event?')) return;
+  try {
+    await fetch(`/api/calendar/${id}`, { method: 'DELETE' });
+    loadEvents();
+    showToast('Event deleted', 'success');
+  } catch (e) {
+    showToast('Error deleting', 'danger');
+  }
+}
+
+// ─── CAMPAIGNS ────────────────────────────────────
+async function loadCampaigns() {
+  try {
+    const res = await fetch('/api/campaigns');
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    const list = document.getElementById('campaigns-list');
+    if (!data.campaigns || !data.campaigns.length) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;">No campaigns yet. Create your first one!</div>';
+      return;
+    }
+    let html = '';
+    data.campaigns.forEach(c => {
+      const statusColors = {planning: 'var(--muted)', active: 'var(--success)', completed: 'var(--accent)', paused: 'var(--warning)'};
+      html += `<div class="campaign-card">
+        <div class="campaign-header">
+          <span class="campaign-name">${escapeHtml(c.name)}</span>
+          <span style="color:${statusColors[c.status] || 'var(--muted)'};font-size:0.75rem;">${c.status}</span>
+        </div>
+        <div class="campaign-meta">
+          ${c.description ? escapeHtml(c.description.slice(0, 80)) + (c.description.length > 80 ? '…' : '') + ' · ' : ''}
+          ${c.content_count || 0} pieces
+          ${c.goal ? ' · ' + escapeHtml(c.goal.slice(0, 60)) : ''}
+        </div>
+      </div>`;
+    });
+    list.innerHTML = html;
+  } catch (e) {
+    document.getElementById('campaigns-list').innerHTML = '<div style="color:var(--danger)">Failed to load</div>';
+  }
+}
+
+function showAddCampaign() {
+  document.getElementById('campaign-modal').style.display = 'flex';
+  document.getElementById('campaign-name').value = '';
+  document.getElementById('campaign-desc').value = '';
+  document.getElementById('campaign-start').value = '';
+  document.getElementById('campaign-end').value = '';
+}
+
+function closeCampaignModal() {
+  document.getElementById('campaign-modal').style.display = 'none';
+}
+
+async function saveCampaign() {
+  const name = document.getElementById('campaign-name').value.trim();
+  if (!name) { showToast('Campaign name required', 'warning'); return; }
+  try {
+    const res = await fetch('/api/campaigns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description: document.getElementById('campaign-desc').value.trim(),
+        start_date: document.getElementById('campaign-start').value,
+        end_date: document.getElementById('campaign-end').value,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed');
+    closeCampaignModal();
+    loadCampaigns();
+    showToast('Campaign created!', 'success');
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  }
+}
+
+// ─── ANALYTICS ────────────────────────────────────
+async function loadAnalytics() {
+  try {
+    const res = await fetch('/api/analytics/summary');
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    let html = `<div class="stat-row">
+      <div class="stat-box"><div class="stat-num">${data.total_generations}</div><div class="stat-label">Total Generations</div></div>
+      <div class="stat-box"><div class="stat-num">${data.text_generations}</div><div class="stat-label">Text</div></div>
+      <div class="stat-box"><div class="stat-num">${data.image_generations}</div><div class="stat-label">Images</div></div>
+      <div class="stat-box"><div class="stat-num">${data.recent_7_days}</div><div class="stat-label">Last 7 Days</div></div>
+      <div class="stat-box"><div class="stat-num">${data.total_words.toLocaleString()}</div><div class="stat-label">Total Words</div></div>
+    </div>`;
+
+    // Provider usage
+    if (data.provider_usage && data.provider_usage.length) {
+      html += '<div style="margin-top:0.75rem;"><strong style="font-size:0.85rem;">Provider Usage:</strong><div style="display:flex;gap:1rem;margin-top:0.35rem;">';
+      const total = data.provider_usage.reduce((s, p) => s + p.count, 0);
+      data.provider_usage.forEach(p => {
+        const pct = Math.round(p.count / total * 100);
+        html += `<div style="font-size:0.85rem;"><span style="color:var(--accent);">■</span> ${p.provider}: ${p.count} (${pct}%)</div>`;
+      });
+      html += '</div></div>';
+    }
+
+    // Daily activity chart
+    if (data.daily_activity && data.daily_activity.length) {
+      const maxCount = Math.max(...data.daily_activity.map(d => d.count), 1);
+      html += '<div style="margin-top:0.75rem;"><strong style="font-size:0.85rem;">Last 30 Days Activity:</strong><div class="chart-bar-container">';
+      data.daily_activity.forEach(d => {
+        const h = Math.max(2, Math.round(d.count / maxCount * 60));
+        const day = d.day.slice(5); // MM-DD
+        html += `<div class="chart-bar" style="height:${h}px;" title="${day}: ${d.count}"></div>`;
+      });
+      html += '</div><div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--muted);">';
+      if (data.daily_activity.length > 1) {
+        html += `<span>${data.daily_activity[0].day.slice(5)}</span>`;
+        html += `<span>${data.daily_activity[data.daily_activity.length-1].day.slice(5)}</span>`;
+      }
+      html += '</div></div>';
+    }
+
+    document.getElementById('analytics-content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('analytics-content').innerHTML = '<div style="color:var(--danger)">Failed to load analytics</div>';
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────
+loadEvents();
+loadCampaigns();
+loadAnalytics();
+</script>
+{% endblock %}

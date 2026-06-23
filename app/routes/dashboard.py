@@ -111,3 +111,30 @@ def search_history():
     return jsonify({
         "items": [dict(r) for r in results]
     })
+
+
+@dashboard_bp.route("/api/history")
+@login_required
+def api_history():
+    limit = request.args.get("limit", 10, type=int)
+    page = request.args.get("page", 1, type=int)
+    offset = (page - 1) * limit
+    user = get_user_by_id(session["user_id"])
+    results = get_generations(user["id"], limit=limit, offset=offset)
+    return jsonify({
+        "generations": [dict(r) for r in results]
+    })
+
+
+@dashboard_bp.route("/studio")
+@login_required
+def studio():
+    user = get_user_by_id(session["user_id"])
+    return render_template("studio.html", user=user)
+
+
+@dashboard_bp.route("/integrations")
+@login_required
+def integrations():
+    user = get_user_by_id(session["user_id"])
+    return render_template("integrations.html", user=user)

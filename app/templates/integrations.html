@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Integrations — ContentForge{% endblock %}
+{% block head_extra %}
+<style>
+.integration-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
+.integration-card h3 { margin: 0 0 0.75rem; font-size: 1rem; display: flex; align-items: center; gap: 0.4rem; }
+.token-row { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+.token-row:last-child { border-bottom: none; }
+.token-preview { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--muted); }
+.token-active { color: var(--success); font-size: 0.75rem; }
+.token-revoked { color: var(--danger); font-size: 0.75rem; }
+.code-block { background: #1e1e2e; color: #cdd6f4; border-radius: 6px; padding: 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; overflow-x: auto; margin: 0.5rem 0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>🔌 Integrations</h2>
+  <span class="badge badge-accent">API & Webhooks</span>
+</div>
+
+<!-- ─── API TOKENS ─── -->
+<div class="integration-card">
+  <h3>🔑 API Tokens</h3>
+  <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem;">Generate API tokens to access ContentForge programmatically.</p>
+  <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
+    <input type="text" id="token-name" placeholder="Token name (e.g., 'My App')" style="flex:1;">
+    <select id="token-scope">
+      <option value="read">Read Only</option>
+      <option value="read,write">Read & Write</option>
+    </select>
+    <button class="btn btn-accent btn-sm" onclick="createToken()">Generate</button>
+  </div>
+  <div id="token-list">
+    <div class="spinner">Loading tokens…</div>
+  </div>
+  <div id="new-token-display" style="display:none;margin-top:0.75rem;">
+    <div style="font-size:0.85rem;color:var(--warning);margin-bottom:0.35rem;">⚠️ Copy this token now — you won't see it again!</div>
+    <div class="code-block" id="new-token-value"></div>
+    <button class="btn btn-ghost btn-sm" onclick="copyToken()">📋 Copy</button>
+  </div>
+</div>
+
+<!-- ─── WEBHOOKS ─── -->
+<div class="integration-card">
+  <h3>🔔 Webhooks</h3>
+  <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem;">Receive HTTP callbacks when content is created, updated, or exported.</p>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+    <input type="text" id="webhook-name" placeholder="Webhook name" style="flex:1;min-width:120px;">
+    <input type="url" id="webhook-url" placeholder="https://your-server.com/hook" style="flex:2;">
+    <button class="btn btn-accent btn-sm" onclick="createWebhook()">Add</button>
+  </div>
+  <div id="webhook-list">
+    <div class="spinner">Loading webhooks…</div>
+  </div>
+</div>
+
+<!-- ─── API REFERENCE ─── -->
+<div class="integration-card">
+  <h3>📖 API Reference</h3>
+  <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem;">Use your API token to make requests to ContentForge.</p>
+  <div class="code-block">
+    <span style="color:#89b4fa;"># Generate content via API</span><br>
+    curl -X POST https://contentforge.local/api/v1/generate \<br>
+    &nbsp;&nbsp;-H "Authorization: Bearer YOUR_TOKEN" \<br>
+    &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+    &nbsp;&nbsp;-d '{"prompt": "Write a blog post about AI", "provider": "gemini"}'
+  </div>
+  <div class="code-block">
+    <span style="color:#89b4fa;"># List your generations</span><br>
+    curl -H "Authorization: Bearer YOUR_TOKEN" \<br>
+    &nbsp;&nbsp;https://contentforge.local/api/v1/generations
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+// ─── API TOKENS ───────────────────────────────────
+async function loadTokens() {
+  try {
+    const res = await fetch('/api/integrations/tokens');
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    const list = document.getElementById('token-list');
+    if (!data.tokens || !data.tokens.length) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;">No API tokens yet.</div>';
+      return;
+    }
+    let html = '';
+    data.tokens.forEach(t => {
+      html += `<div class="token-row">
+        <div><strong>${escapeHtml(t.name)}</strong> <span class="token-preview">${t.token_preview}</span></div>
+        <div>
+          <span class="${t.is_active ? 'token-active' : 'token-revoked'}">${t.is_active ? 'Active' : 'Revoked'}</span>
+          ${t.is_active ? `<button class="btn btn-ghost btn-xs" onclick="revokeToken(${t.id})">Revoke</button>` : ''}
+        </div>
+      </div>`;
+    });
+    list.innerHTML = html;
+  } catch (e) {
+    document.getElementById('token-list').innerHTML = '<div style="color:var(--danger)">Failed to load</div>';
+  }
+}
+
+async function createToken() {
+  const name = document.getElementById('token-name').value.trim();
+  if (!name) { showToast('Token name required', 'warning'); return; }
+  const scopes = document.getElementById('token-scope').value;
+  try {
+    const res = await fetch('/api/integrations/tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, scopes }),
+    });
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    document.getElementById('new-token-value').textContent = data.token;
+    document.getElementById('new-token-display').style.display = 'block';
+    document.getElementById('token-name').value = '';
+    loadTokens();
+    showToast('Token created! Copy it now.', 'success');
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  }
+}
+
+function copyToken() {
+  const val = document.getElementById('new-token-value').textContent;
+  navigator.clipboard.writeText(val).then(() => {
+    showToast('Copied!', 'success');
+  });
+}
+
+async function revokeToken(id) {
+  if (!confirm('Revoke this token? This cannot be undone.')) return;
+  try {
+    await fetch(`/api/integrations/tokens/${id}/revoke`, { method: 'POST' });
+    loadTokens();
+    showToast('Token revoked', 'success');
+  } catch (e) {
+    showToast('Error revoking', 'danger');
+  }
+}
+
+// ─── WEBHOOKS ────────────────────────────────────
+async function loadWebhooks() {
+  try {
+    const res = await fetch('/api/integrations/webhooks');
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    const list = document.getElementById('webhook-list');
+    if (!data.webhooks || !data.webhooks.length) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;">No webhooks configured.</div>';
+      return;
+    }
+    let html = '';
+    data.webhooks.forEach(h => {
+      html += `<div class="token-row">
+        <div><strong>${escapeHtml(h.name)}</strong><br><span style="font-size:0.75rem;color:var(--muted);">${escapeHtml(h.url)}</span></div>
+        <div>
+          <span style="font-size:0.75rem;color:var(--muted);">${h.events}</span>
+          <button class="btn btn-ghost btn-xs" onclick="deleteWebhook(${h.id})">✕</button>
+        </div>
+      </div>`;
+    });
+    list.innerHTML = html;
+  } catch (e) {
+    document.getElementById('webhook-list').innerHTML = '<div style="color:var(--danger)">Failed to load</div>';
+  }
+}
+
+async function createWebhook() {
+  const name = document.getElementById('webhook-name').value.trim();
+  const url = document.getElementById('webhook-url').value.trim();
+  if (!name || !url) { showToast('Name and URL required', 'warning'); return; }
+  try {
+    const res = await fetch('/api/integrations/webhooks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, url }),
+    });
+    if (!res.ok) throw new Error('Failed');
+    document.getElementById('webhook-name').value = '';
+    document.getElementById('webhook-url').value = '';
+    loadWebhooks();
+    showToast('Webhook created!', 'success');
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  }
+}
+
+async function deleteWebhook(id) {
+  if (!confirm('Delete this webhook?')) return;
+  try {
+    await fetch(`/api/integrations/webhooks/${id}`, { method: 'DELETE' });
+    loadWebhooks();
+    showToast('Webhook deleted', 'success');
+  } catch (e) {
+    showToast('Error deleting', 'danger');
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────
+loadTokens();
+loadWebhooks();
+</script>
+{% endblock %}

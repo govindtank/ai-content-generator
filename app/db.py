@@ -167,6 +167,97 @@ def init_db():
              'Write a video script with hook, main points, and call to action.', '🎬'),
             ('social-post', 'Social Media Post', 'General social media post',
              'Write a short, engaging social media post suitable for platforms like Instagram, Facebook, etc.', '📱');
+
+        -- ─── Phase 4: Calendar ──────────────────────────────────
+        CREATE TABLE IF NOT EXISTS calendar_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            generation_id INTEGER,
+            title TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            event_date DATE NOT NULL,
+            status TEXT DEFAULT 'draft',
+            platform TEXT DEFAULT 'blog',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (generation_id) REFERENCES generations(id) ON DELETE SET NULL
+        );
+
+        -- ─── Phase 4: Campaigns ─────────────────────────────────
+        CREATE TABLE IF NOT EXISTS campaigns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            goal TEXT DEFAULT '',
+            start_date DATE,
+            end_date DATE,
+            status TEXT DEFAULT 'planning',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS campaign_content (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            generation_id INTEGER NOT NULL,
+            slot_order INTEGER DEFAULT 0,
+            notes TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+            FOREIGN KEY (generation_id) REFERENCES generations(id) ON DELETE CASCADE
+        );
+
+        -- ─── Phase 4: API Tokens ─────────────────────────────────
+        CREATE TABLE IF NOT EXISTS api_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            scopes TEXT DEFAULT 'read',
+            last_used_at TIMESTAMP,
+            expires_at TIMESTAMP,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        -- ─── Phase 4: Webhooks ──────────────────────────────────
+        CREATE TABLE IF NOT EXISTS webhooks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            events TEXT NOT NULL DEFAULT 'content.created',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            secret TEXT DEFAULT '',
+            last_triggered_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        -- ─── Phase 4: Comments / Collaboration ──────────────────
+        CREATE TABLE IF NOT EXISTS content_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            generation_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            comment TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (generation_id) REFERENCES generations(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        -- ─── Phase 4: Analytics Log ──────────────────────────────
+        CREATE TABLE IF NOT EXISTS analytics_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            metadata TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
     """)
     db.commit()
 
@@ -555,3 +646,333 @@ def get_exports(user_id, limit=20):
            ORDER BY e.created_at DESC LIMIT ?""",
         (user_id, limit),
     ).fetchall()
+
+
+# ─── Phase 4: Calendar ────────────────────────────────────────────
+
+
+def get_calendar_events(user_id, start_date=None, end_date=None, month=None):
+    db = get_db()
+    query = "SELECT * FROM calendar_events WHERE user_id = ?"
+    params = [user_id]
+    if start_date and end_date:
+        query += " AND event_date >= ? AND event_date <= ?"
+        params.extend([start_date, end_date])
+    if month:
+        query += " AND strftime('%Y-%m', event_date) = ?"
+        params.append(month)
+    query += " ORDER BY event_date ASC"
+    return db.execute(query, params).fetchall()
+
+
+def create_calendar_event(user_id, title, event_date, generation_id=None,
+                          description="", platform="blog", status="draft"):
+    db = get_db()
+    cur = db.execute(
+        """INSERT INTO calendar_events (user_id, title, event_date, generation_id, description, platform, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, title, event_date, generation_id, description, platform, status),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+def update_calendar_event(event_id, user_id, **kwargs):
+    db = get_db()
+    fields = {k: v for k, v in kwargs.items() if v is not None}
+    if not fields:
+        return
+    fields["updated_at"] = datetime.utcnow()
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    db.execute(
+        f"UPDATE calendar_events SET {set_clause} WHERE id = ? AND user_id = ?",
+        list(fields.values()) + [event_id, user_id],
+    )
+    db.commit()
+
+
+def delete_calendar_event(event_id, user_id):
+    db = get_db()
+    db.execute(
+        "DELETE FROM calendar_events WHERE id = ? AND user_id = ?",
+        (event_id, user_id),
+    )
+    db.commit()
+
+
+# ─── Phase 4: Campaigns ────────────────────────────────────────────
+
+
+def get_campaigns(user_id):
+    db = get_db()
+    return db.execute(
+        """SELECT c.*, 
+           (SELECT COUNT(*) FROM campaign_content WHERE campaign_id = c.id) as content_count
+           FROM campaigns c WHERE c.user_id = ?
+           ORDER BY c.created_at DESC""",
+        (user_id,),
+    ).fetchall()
+
+
+def get_campaign(campaign_id, user_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM campaigns WHERE id = ? AND user_id = ?",
+        (campaign_id, user_id),
+    ).fetchone()
+
+
+def create_campaign(user_id, name, description="", goal="",
+                    start_date=None, end_date=None, status="planning"):
+    db = get_db()
+    cur = db.execute(
+        """INSERT INTO campaigns (user_id, name, description, goal, start_date, end_date, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, name, description, goal, start_date, end_date, status),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+def update_campaign(campaign_id, user_id, **kwargs):
+    db = get_db()
+    fields = {k: v for k, v in kwargs.items() if v is not None}
+    if not fields:
+        return
+    fields["updated_at"] = datetime.utcnow()
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    db.execute(
+        f"UPDATE campaigns SET {set_clause} WHERE id = ? AND user_id = ?",
+        list(fields.values()) + [campaign_id, user_id],
+    )
+    db.commit()
+
+
+def delete_campaign(campaign_id, user_id):
+    db = get_db()
+    db.execute(
+        "DELETE FROM campaigns WHERE id = ? AND user_id = ?",
+        (campaign_id, user_id),
+    )
+    db.commit()
+
+
+def get_campaign_content(campaign_id):
+    db = get_db()
+    return db.execute(
+        """SELECT cc.*, g.prompt, g.content, g.format_type, g.created_at as gen_created
+           FROM campaign_content cc
+           JOIN generations g ON cc.generation_id = g.id
+           WHERE cc.campaign_id = ?
+           ORDER BY cc.slot_order ASC""",
+        (campaign_id,),
+    ).fetchall()
+
+
+def add_campaign_content(campaign_id, generation_id, slot_order=0, notes=""):
+    db = get_db()
+    db.execute(
+        """INSERT OR IGNORE INTO campaign_content (campaign_id, generation_id, slot_order, notes)
+           VALUES (?, ?, ?, ?)""",
+        (campaign_id, generation_id, slot_order, notes),
+    )
+    db.commit()
+
+
+def remove_campaign_content(campaign_id, generation_id):
+    db = get_db()
+    db.execute(
+        "DELETE FROM campaign_content WHERE campaign_id = ? AND generation_id = ?",
+        (campaign_id, generation_id),
+    )
+    db.commit()
+
+
+# ─── Phase 4: API Tokens ──────────────────────────────────────────
+
+
+def get_api_tokens(user_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,),
+    ).fetchall()
+
+
+def create_api_token(user_id, name, scopes="read", expires_at=None):
+    import secrets
+    db = get_db()
+    token = "cf_" + secrets.token_hex(32)
+    cur = db.execute(
+        """INSERT INTO api_tokens (user_id, name, token, scopes, expires_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (user_id, name, token, scopes, expires_at),
+    )
+    db.commit()
+    return {"id": cur.lastrowid, "token": token, "name": name}
+
+
+def revoke_api_token(token_id, user_id):
+    db = get_db()
+    db.execute(
+        "UPDATE api_tokens SET is_active = 0 WHERE id = ? AND user_id = ?",
+        (token_id, user_id),
+    )
+    db.commit()
+
+
+def validate_api_token(token):
+    db = get_db()
+    return db.execute(
+        """SELECT * FROM api_tokens 
+           WHERE token = ? AND is_active = 1 
+           AND (expires_at IS NULL OR expires_at > datetime('now'))""",
+        (token,),
+    ).fetchone()
+
+
+# ─── Phase 4: Webhooks ────────────────────────────────────────────
+
+
+def get_webhooks(user_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM webhooks WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,),
+    ).fetchall()
+
+
+def create_webhook(user_id, name, url, events="content.created", secret=""):
+    import secrets
+    db = get_db()
+    if not secret:
+        secret = secrets.token_hex(16)
+    cur = db.execute(
+        """INSERT INTO webhooks (user_id, name, url, events, secret)
+           VALUES (?, ?, ?, ?, ?)""",
+        (user_id, name, url, events, secret),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+def update_webhook(webhook_id, user_id, **kwargs):
+    db = get_db()
+    fields = {k: v for k, v in kwargs.items() if v is not None and k in ("name", "url", "events", "is_active")}
+    if not fields:
+        return
+    db.execute(
+        f"UPDATE webhooks SET {', '.join(f'{k}=?' for k in fields)} WHERE id=? AND user_id=?",
+        list(fields.values()) + [webhook_id, user_id],
+    )
+    db.commit()
+
+
+def delete_webhook(webhook_id, user_id):
+    db = get_db()
+    db.execute(
+        "DELETE FROM webhooks WHERE id = ? AND user_id = ?",
+        (webhook_id, user_id),
+    )
+    db.commit()
+
+
+# ─── Phase 4: Comments ─────────────────────────────────────────────
+
+
+def get_content_comments(generation_id):
+    db = get_db()
+    return db.execute(
+        """SELECT cc.*, u.name as user_name, u.avatar_url
+           FROM content_comments cc
+           JOIN users u ON cc.user_id = u.id
+           WHERE cc.generation_id = ?
+           ORDER BY cc.created_at ASC""",
+        (generation_id,),
+    ).fetchall()
+
+
+def add_content_comment(generation_id, user_id, comment):
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO content_comments (generation_id, user_id, comment) VALUES (?, ?, ?)",
+        (generation_id, user_id, comment),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+# ─── Phase 4: Analytics ────────────────────────────────────────────
+
+
+def log_analytics_event(user_id, event_type, metadata=None):
+    import json
+    db = get_db()
+    db.execute(
+        "INSERT INTO analytics_log (user_id, event_type, metadata) VALUES (?, ?, ?)",
+        (user_id, event_type, json.dumps(metadata or {})),
+    )
+    db.commit()
+
+
+def get_analytics_summary(user_id):
+    """Returns a summary of usage statistics."""
+    db = get_db()
+    total_gens = db.execute(
+        "SELECT COUNT(*) FROM generations WHERE user_id = ?", (user_id,)
+    ).fetchone()[0]
+    text_gens = db.execute(
+        "SELECT COUNT(*) FROM generations WHERE user_id = ? AND type='text'", (user_id,)
+    ).fetchone()[0]
+    image_gens = db.execute(
+        "SELECT COUNT(*) FROM generations WHERE user_id = ? AND type='image'", (user_id,)
+    ).fetchone()[0]
+
+    recent = db.execute(
+        """SELECT COUNT(*) FROM generations 
+           WHERE user_id = ? AND created_at >= datetime('now', '-7 days')""",
+        (user_id,),
+    ).fetchone()[0]
+
+    # Provider usage
+    provider_counts = db.execute(
+        """SELECT provider, COUNT(*) as count FROM generations 
+           WHERE user_id = ? AND provider != ''
+           GROUP BY provider ORDER BY count DESC""",
+        (user_id,),
+    ).fetchall()
+
+    # Format usage
+    format_counts = db.execute(
+        """SELECT format_type, COUNT(*) as count FROM generations 
+           WHERE user_id = ? AND format_type != 'general'
+           GROUP BY format_type ORDER BY count DESC LIMIT 5""",
+        (user_id,),
+    ).fetchall()
+
+    # Total words generated
+    total_words = db.execute(
+        """SELECT COALESCE(SUM(
+               CASE WHEN content != '' THEN LENGTH(content) - LENGTH(REPLACE(content, ' ', '')) + 1 
+               ELSE 0 END), 0) FROM generations WHERE user_id = ?""",
+        (user_id,),
+    ).fetchone()[0]
+
+    # Recent days activity (last 30 days)
+    daily_activity = db.execute(
+        """SELECT DATE(created_at) as day, COUNT(*) as count FROM generations 
+           WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
+           GROUP BY DATE(created_at) ORDER BY day ASC""",
+        (user_id,),
+    ).fetchall()
+
+    return {
+        "total_generations": total_gens,
+        "text_generations": text_gens,
+        "image_generations": image_gens,
+        "recent_7_days": recent,
+        "total_words": total_words,
+        "provider_usage": [dict(r) for r in provider_counts],
+        "format_usage": [dict(r) for r in format_counts],
+        "daily_activity": [dict(r) for r in daily_activity],
+    }

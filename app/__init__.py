@@ -14,6 +14,11 @@ from app.routes.export import export_bp
 from app.routes.folders import folders_bp
 from app.routes.workbench import workbench_bp
 from app.routes.seo import seo_bp
+from app.routes.calendar import calendar_bp
+from app.routes.campaigns import campaigns_bp
+from app.routes.analytics import analytics_bp
+from app.routes.integrations import integrations_bp
+from app.routes.comments import comments_bp
 from app.providers import router
 from app.providers.gemini import GeminiProvider
 from app.providers.openai import OpenAIProvider
@@ -49,6 +54,11 @@ def create_app(config=None):
     app.register_blueprint(folders_bp)
     app.register_blueprint(workbench_bp)
     app.register_blueprint(seo_bp)
+    app.register_blueprint(calendar_bp)
+    app.register_blueprint(campaigns_bp)
+    app.register_blueprint(analytics_bp)
+    app.register_blueprint(integrations_bp)
+    app.register_blueprint(comments_bp)
 
     @app.errorhandler(404)
     def not_found(e):
