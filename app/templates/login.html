@@ -10,6 +10,7 @@
       <p class="login-subtitle">{{ app_tagline }}</p>
     </div>
     <div class="login-body">
+      {% if has_google_auth %}
       <a href="{{ auth_url }}" class="google-btn">
         <svg width="20" height="20" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
@@ -19,7 +20,22 @@
         </svg>
         Sign in with Google
       </a>
-      <p class="login-note">Use your Google account to get started. You'll need an <strong>API key</strong> from <strong>Google AI Studio</strong>, <strong>OpenAI</strong>, or <strong>Anthropic</strong> to generate content.</p>
+      <p class="login-note">Use your Google account to get started.</p>
+      <hr style="border-color:var(--border);margin:1.25rem 0;">
+      {% endif %}
+
+      <div class="dev-login-section">
+        <h3 style="margin:0 0 0.5rem;font-size:0.95rem;">⚡ Dev Login</h3>
+        <p style="font-size:0.8rem;color:var(--muted);margin:0 0 0.75rem;">
+          No Google OAuth configured — sign in with a local account to test the app.
+        </p>
+        <form action="{{ url_for('auth.dev_login') }}" method="post" style="display:flex;gap:0.5rem;">
+          <input type="text" name="name" placeholder="Your name (optional)" style="flex:1;" value="Dev User">
+          <button type="submit" class="btn btn-accent">Enter</button>
+        </form>
+      </div>
+
+      <p class="login-note" style="margin-top:1rem;">You'll need an <strong>API key</strong> from <strong>Google AI Studio</strong>, <strong>OpenAI</strong>, or <strong>Anthropic</strong> to generate content.</p>
     </div>
   </div>
 </div>
