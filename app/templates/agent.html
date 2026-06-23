@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}Agent — ContentForge{% endblock %}
+{% block head_extra %}
+<style>
+.agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+@media (max-width: 768px) { .agent-grid { grid-template-columns: 1fr; } }
+
+.agent-result { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem; max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 0.85rem; word-break: break-word; }
+.agent-status { font-size: 0.85rem; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem; }
+.agent-status.running { background: rgba(37,99,235,0.1); color: #60a5fa; }
+.agent-status.completed { background: rgba(22,163,74,0.1); color: #4ade80; }
+.agent-status.failed { background: rgba(220,38,38,0.1); color: #f87171; }
+
+.brief-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
+.brief-card .brief-title { font-weight: 600; }
+.brief-card .brief-meta { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+
+.repurpose-format-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+.repurpose-format-list label { font-size: 0.85rem; display: flex; align-items: center; gap: 0.25rem; }
+
+.step-indicator { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; font-size: 0.8rem; }
+.step { padding: 0.25rem 0.6rem; border-radius: 4px; background: var(--border); color: var(--muted); }
+.step.active { background: var(--accent); color: #fff; }
+.step.done { background: var(--success); color: #fff; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>🤖 Agent Mode</h2>
+  <span class="badge badge-accent">v5 · Autonomous</span>
+</div>
+
+<div class="agent-grid">
+
+  <!-- ─── AGENT: Quick Generate ─── -->
+  <div class="card">
+    <div class="card-header">
+      <h3>⚡ Quick Agent</h3>
+      <span class="badge badge-accent">Auto</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 0.75rem;">
+      Give a topic — the agent researches the brief, generates content, and saves it.
+    </p>
+    <div class="step-indicator">
+      <span class="step" id="step-1">1. Brief</span>
+      <span>→</span>
+      <span class="step" id="step-2">2. Generate</span>
+      <span>→</span>
+      <span class="step" id="step-3">3. Done</span>
+    </div>
+    <input type="text" id="agent-topic" placeholder="Enter a topic (e.g., 'AI in Healthcare')" style="width:100%;margin-bottom:0.5rem;">
+    <textarea id="agent-goal" placeholder="Goal (optional) — e.g., 'Explain to beginners'" style="width:100%;margin-bottom:0.5rem;min-height:50px;"></textarea>
+    <div style="display:flex;gap:0.5rem;">
+      <select id="agent-format" style="flex:1;">
+        <option value="blog-post">📝 Blog Post</option>
+        <option value="twitter-thread">🐦 Twitter Thread</option>
+        <option value="linkedin-post">💼 LinkedIn Post</option>
+        <option value="email-newsletter">📧 Newsletter</option>
+      </select>
+      <button class="btn btn-accent" onclick="runAgent()">Generate</button>
+    </div>
+    <div id="agent-spinner" class="spinner" style="display:none;margin-top:0.5rem;">Agent working…</div>
+    <div id="agent-result" class="agent-result" style="display:none;"></div>
+  </div>
+
+  <!-- ─── CONTENT BRIEFS ─── -->
+  <div class="card">
+    <div class="card-header">
+      <h3>📋 Content Briefs</h3>
+      <span class="badge badge-accent">AI</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 0.75rem;">
+      Generate a research brief with outline, keywords, angle, and audience.
+    </p>
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+      <input type="text" id="brief-topic" placeholder="Topic for brief" style="flex:1;">
+      <button class="btn btn-accent btn-sm" onclick="generateBrief()">Generate Brief</button>
+    </div>
+    <div id="brief-spinner" class="spinner" style="display:none;">Generating brief…</div>
+    <div id="brief-result"></div>
+    <div style="margin-top:0.75rem;">
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">Saved Briefs:</div>
+      <div id="briefs-list">
+        <div class="spinner">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── AUTO-REPURPOSE ─── -->
+  <div class="card">
+    <div class="card-header">
+      <h3>🔄 Auto-Repurpose</h3>
+      <span class="badge badge-accent">Batch</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 0.75rem;">
+      Convert content across multiple formats in one click.
+    </p>
+    <textarea id="repurpose-source" placeholder="Paste or type content to repurpose..." style="width:100%;margin-bottom:0.5rem;min-height:80px;"></textarea>
+    <div style="font-size:0.85rem;margin-bottom:0.35rem;">Target formats:</div>
+    <div class="repurpose-format-list" id="repurpose-formats">
+      <label><input type="checkbox" value="twitter-thread" checked> 🐦 Thread</label>
+      <label><input type="checkbox" value="linkedin-post" checked> 💼 LinkedIn</label>
+      <label><input type="checkbox" value="email-newsletter"> 📧 Newsletter</label>
+      <label><input type="checkbox" value="social-post" checked> 📱 Social</label>
+      <label><input type="checkbox" value="ad-copy"> 📢 Ad Copy</label>
+    </div>
+    <button class="btn btn-accent" onclick="runRepurpose()">Repurpose</button>
+    <div id="repurpose-spinner" class="spinner" style="display:none;margin-top:0.5rem;">Converting…</div>
+    <div id="repurpose-results" style="margin-top:0.5rem;"></div>
+  </div>
+
+  <!-- ─── SCHEDULE ─── -->
+  <div class="card">
+    <div class="card-header">
+      <h3>📅 Schedule</h3>
+      <span class="badge">Smart</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--muted);margin:0 0 0.75rem;">
+      Schedule content for future publication.
+    </p>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+      <input type="text" id="schedule-title" placeholder="Content title" style="flex:1;">
+      <input type="datetime-local" id="schedule-date" style="flex-shrink:0;">
+    </div>
+    <div style="display:flex;gap:0.5rem;">
+      <select id="schedule-platform">
+        <option value="blog">Blog</option>
+        <option value="social">Social</option>
+        <option value="email">Email</option>
+      </select>
+      <button class="btn btn-accent btn-sm" onclick="scheduleContent()">Schedule</button>
+    </div>
+    <div style="margin-top:0.75rem;">
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">Upcoming:</div>
+      <div id="schedule-list">
+        <div class="spinner">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ─── AGENT: Quick Generate ──────────────────────
+async function runAgent() {
+  const topic = document.getElementById('agent-topic').value.trim();
+  if (!topic) { showToast('Enter a topic', 'warning'); return; }
+  const goal = document.getElementById('agent-goal').value.trim();
+  const format = document.getElementById('agent-format').value;
+
+  ['step-1','step-2','step-3'].forEach(id => document.getElementById(id).className = 'step');
+  document.getElementById('step-1').className = 'step active';
+  document.getElementById('agent-spinner').style.display = '';
+  document.getElementById('agent-result').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/agent/task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: topic.slice(0, 50), topic, goal, format_type: format, provider: 'gemini' }),
+    });
+    if (!res.ok) throw new Error('Agent failed');
+    const data = await res.json();
+
+    document.getElementById('step-1').className = 'step done';
+    document.getElementById('step-2').className = 'step done';
+    document.getElementById('step-3').className = 'step done';
+    document.getElementById('agent-spinner').style.display = 'none';
+
+    const resultDiv = document.getElementById('agent-result');
+    resultDiv.style.display = '';
+    resultDiv.textContent = data.content || '(empty result)';
+    showToast('✅ Agent completed!', 'success');
+  } catch (e) {
+    document.getElementById('agent-spinner').style.display = 'none';
+    document.getElementById('step-2').className = 'step';
+    const resultDiv = document.getElementById('agent-result');
+    resultDiv.style.display = '';
+    resultDiv.textContent = 'Error: ' + e.message;
+    resultDiv.style.color = 'var(--danger)';
+  }
+}
+
+// ─── CONTENT BRIEFS ─────────────────────────────
+async function generateBrief() {
+  const topic = document.getElementById('brief-topic').value.trim();
+  if (!topic) { showToast('Enter a topic', 'warning'); return; }
+  document.getElementById('brief-spinner').style.display = '';
+  try {
+    const res = await fetch('/api/agent/brief', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic }),
+    });
+    if (!res.ok) throw new Error('Brief failed');
+    const data = await res.json();
+    let html = `<div class="brief-card">
+      <div class="brief-title">${escapeHtml(data.title)}</div>
+      <div class="brief-meta">
+        <strong>Audience:</strong> ${escapeHtml(data.target_audience || '(auto)')}<br>
+        <strong>Angle:</strong> ${escapeHtml(data.angle || '(auto)')}<br>
+        <strong>Outline:</strong> ${escapeHtml(data.outline || '(auto)')}<br>
+        <strong>Keywords:</strong> ${(data.keywords || []).map(k => `<span class="keyword-tag">${k}</span>`).join(' ')}
+      </div>
+    </div>`;
+    document.getElementById('brief-result').innerHTML = html;
+    document.getElementById('brief-topic').value = '';
+    loadBriefs();
+    showToast('Brief generated!', 'success');
+  } catch (e) {
+    document.getElementById('brief-result').innerHTML = `<div style="color:var(--danger)">Error: ${e.message}</div>`;
+  }
+  document.getElementById('brief-spinner').style.display = 'none';
+}
+
+async function loadBriefs() {
+  try {
+    const res = await fetch('/api/agent/briefs');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const list = document.getElementById('briefs-list');
+    if (!data.briefs || !data.briefs.length) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;">No briefs yet.</div>';
+      return;
+    }
+    let html = '';
+    data.briefs.slice(0, 5).forEach(b => {
+      html += `<div class="brief-card">
+        <div class="brief-title">${escapeHtml(b.title)}</div>
+        <div class="brief-meta">${escapeHtml(b.topic)} · ${b.created_at?.slice(0, 10) || ''}</div>
+      </div>`;
+    });
+    list.innerHTML = html;
+  } catch (e) {
+    document.getElementById('briefs-list').innerHTML = '<div style="color:var(--danger)">Failed to load</div>';
+  }
+}
+
+// ─── AUTO-REPURPOSE ────────────────────────────
+async function runRepurpose() {
+  const content = document.getElementById('repurpose-source').value.trim();
+  if (!content) { showToast('Enter content', 'warning'); return; }
+  const checked = document.querySelectorAll('#repurpose-formats input:checked');
+  if (!checked.length) { showToast('Select at least one format', 'warning'); return; }
+  const formats = Array.from(checked).map(cb => cb.value);
+
+  document.getElementById('repurpose-spinner').style.display = '';
+  try {
+    const res = await fetch('/api/agent/auto-repurpose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, formats, source_format: 'general' }),
+    });
+    if (!res.ok) throw new Error('Repurpose failed');
+    const data = await res.json();
+    let html = '';
+    data.results.forEach(r => {
+      const iconMap = {'twitter-thread':'🐦','linkedin-post':'💼','email-newsletter':'📧','social-post':'📱','ad-copy':'📢','blog-post':'📝'};
+      html += `<div class="brief-card">
+        <div style="font-weight:600;">${iconMap[r.format] || '📄'} ${r.format}</div>
+        <div class="agent-result">${escapeHtml(r.content?.slice(0, 500) || '(empty)')}</div>
+      </div>`;
+    });
+    document.getElementById('repurpose-results').innerHTML = html;
+    showToast(`Generated ${data.total} formats`, 'success');
+  } catch (e) {
+    document.getElementById('repurpose-results').innerHTML = `<div style="color:var(--danger)">Error: ${e.message}</div>`;
+  }
+  document.getElementById('repurpose-spinner').style.display = 'none';
+}
+
+// ─── SCHEDULE ──────────────────────────────────
+async function scheduleContent() {
+  const title = document.getElementById('schedule-title').value.trim();
+  const date = document.getElementById('schedule-date').value;
+  const platform = document.getElementById('schedule-platform').value;
+  if (!title || !date) { showToast('Title and date required', 'warning'); return; }
+  try {
+    const res = await fetch('/api/agent/schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, scheduled_date: date, platform }),
+    });
+    if (!res.ok) throw new Error('Schedule failed');
+    document.getElementById('schedule-title').value = '';
+    loadSchedule();
+    showToast('Scheduled!', 'success');
+  } catch (e) {
+    showToast('Error: ' + e.message, 'danger');
+  }
+}
+
+async function loadSchedule() {
+  try {
+    const res = await fetch('/api/agent/schedule');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const list = document.getElementById('schedule-list');
+    if (!data.schedules || !data.schedules.length) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:0.85rem;">No upcoming schedules.</div>';
+      return;
+    }
+    let html = '';
+    data.schedules.slice(0, 5).forEach(s => {
+      const statusClass = s.status === 'completed' ? 'text-success' : 'text-warning';
+      html += `<div class="brief-card">
+        <div class="brief-title">${escapeHtml(s.title)}</div>
+        <div class="brief-meta">${s.platform} · ${s.scheduled_date?.slice(0, 16).replace('T', ' ')} · <span class="${statusClass}">${s.status}</span></div>
+      </div>`;
+    });
+    list.innerHTML = html;
+  } catch (e) {
+    document.getElementById('schedule-list').innerHTML = '<div style="color:var(--danger)">Failed to load</div>';
+  }
+}
+
+// ─── INIT ──────────────────────────────────────
+loadBriefs();
+loadSchedule();
+</script>
+{% endblock %}

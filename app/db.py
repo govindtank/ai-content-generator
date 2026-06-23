@@ -258,6 +258,57 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+
+        -- ─── Phase 5: Agent Tasks ──────────────────────────────
+        CREATE TABLE IF NOT EXISTS agent_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            goal TEXT DEFAULT '',
+            format_type TEXT DEFAULT 'blog-post',
+            provider TEXT DEFAULT 'gemini',
+            status TEXT DEFAULT 'pending',
+            progress TEXT DEFAULT '',
+            result_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        -- ─── Phase 5: Content Briefs ───────────────────────────
+        CREATE TABLE IF NOT EXISTS content_briefs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            outline TEXT DEFAULT '',
+            keywords TEXT DEFAULT '[]',
+            target_audience TEXT DEFAULT '',
+            angle TEXT DEFAULT '',
+            sources TEXT DEFAULT '[]',
+            goal TEXT DEFAULT '',
+            related_brief_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        -- ─── Phase 5: Scheduled Publishes ──────────────────────
+        CREATE TABLE IF NOT EXISTS scheduled_publishes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            generation_id INTEGER,
+            title TEXT NOT NULL,
+            platform TEXT DEFAULT 'blog',
+            scheduled_date TIMESTAMP NOT NULL,
+            status TEXT DEFAULT 'pending',
+            frequency TEXT DEFAULT 'once',
+            is_recurring INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            processed_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (generation_id) REFERENCES generations(id) ON DELETE SET NULL
+        );
     """)
     db.commit()
 
@@ -976,3 +1027,109 @@ def get_analytics_summary(user_id):
         "format_usage": [dict(r) for r in format_counts],
         "daily_activity": [dict(r) for r in daily_activity],
     }
+
+
+# ─── Phase 5: Agent Tasks ─────────────────────────────────────────
+
+
+def create_agent_task(user_id, name, topic, goal="", format_type="blog-post", provider="gemini"):
+    db = get_db()
+    cur = db.execute(
+        """INSERT INTO agent_tasks (user_id, name, topic, goal, format_type, provider)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (user_id, name, topic, goal, format_type, provider),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+def get_agent_tasks(user_id, limit=10):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM agent_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit),
+    ).fetchall()
+
+
+def update_agent_task(task_id, user_id, **kwargs):
+    db = get_db()
+    fields = {k: v for k, v in kwargs.items() if v is not None}
+    if not fields:
+        return
+    db.execute(
+        f"UPDATE agent_tasks SET {', '.join(f'{k}=?' for k in fields)} WHERE id=? AND user_id=?",
+        list(fields.values()) + [task_id, user_id],
+    )
+    db.commit()
+
+
+# ─── Phase 5: Content Briefs ─────────────────────────────────────
+
+
+def create_content_brief(user_id, title, topic, outline="", keywords=None,
+                         target_audience="", angle="", sources=None, goal=""):
+    import json
+    db = get_db()
+    cur = db.execute(
+        """INSERT INTO content_briefs (user_id, title, topic, outline, keywords, target_audience, angle, sources, goal)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, title, topic, outline, json.dumps(keywords or []),
+         target_audience, angle, json.dumps(sources or []), goal),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+def get_content_briefs(user_id, limit=10):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM content_briefs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit),
+    ).fetchall()
+
+
+def get_content_brief(brief_id, user_id):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM content_briefs WHERE id = ? AND user_id = ?",
+        (brief_id, user_id),
+    ).fetchone()
+
+
+# ─── Phase 5: Scheduled Publishes ─────────────────────────────────
+
+
+def create_scheduled_publish(user_id, title, scheduled_date, generation_id=None,
+                             platform="blog", frequency="once"):
+    db = get_db()
+    cur = db.execute(
+        """INSERT INTO scheduled_publishes (user_id, title, scheduled_date, generation_id, platform, frequency)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (user_id, title, scheduled_date, generation_id, platform, frequency),
+    )
+    db.commit()
+    return cur.lastrowid
+
+
+def get_scheduled_publishes(user_id, status=None, limit=20):
+    db = get_db()
+    query = "SELECT * FROM scheduled_publishes WHERE user_id = ?"
+    params = [user_id]
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY scheduled_date ASC LIMIT ?"
+    params.append(limit)
+    return db.execute(query, params).fetchall()
+
+
+def update_scheduled_publish(pub_id, user_id, **kwargs):
+    db = get_db()
+    fields = {k: v for k, v in kwargs.items() if v is not None}
+    if not fields:
+        return
+    db.execute(
+        f"UPDATE scheduled_publishes SET {', '.join(f'{k}=?' for k in fields)} WHERE id=? AND user_id=?",
+        list(fields.values()) + [pub_id, user_id],
+    )
+    db.commit()
